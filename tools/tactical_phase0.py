@@ -55,17 +55,23 @@ def ensure_agent(hostname: str):
     return matches[0]
 
 
-def ensure_script(name: str, script_path: Path):
+def ensure_script(
+    name: str,
+    script_path: Path,
+    description: str,
+    timeout: int,
+    category: str,
+):
     scripts = get_json("/scripts/")
     existing = [s for s in scripts if s.get("name") == name]
     body = script_path.read_text()
     payload = {
         "name": name,
-        "description": "Phase 0 Tactical and SSH engineering loop validation",
+        "description": description,
         "shell": "shell",
-        "category": "DDELANEY (Linux):Automations",
+        "category": category,
         "script_body": body,
-        "default_timeout": 90,
+        "default_timeout": timeout,
         "run_as_user": False,
         "args": [],
         "env_vars": [],
@@ -82,7 +88,18 @@ def ensure_script(name: str, script_path: Path):
     return {"action": "updated", "status": status, "script": json.loads(response)}
 
 
-def run_script(agent_id: str, script_id: int):
+def get_script(name: str):
+    scripts = get_json("/scripts/")
+    matches = [s for s in scripts if s.get("name") == name]
+    if len(matches) != 1:
+        fail(
+            "Script lookup failed",
+            f"Expected exactly one script named {name!r}, found {len(matches)}",
+        )
+    return matches[0]
+
+
+def run_script(agent_id: str, script_id: int, timeout: int):
     payload = {
         "output": "wait",
         "emails": [],
@@ -93,7 +110,7 @@ def run_script(agent_id: str, script_id: int):
         "args": [],
         "env_vars": [],
         "run_as_user": False,
-        "timeout": 90,
+        "timeout": timeout,
     }
     status, response = api_request("POST", f"/agents/{agent_id}/runscript/", payload)
     return {"status": status, "response": json.loads(response)}
@@ -104,14 +121,34 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("agent")
+    script_id_parser = sub.add_parser("script-id")
+    script_id_parser.add_argument("name")
 
     script_parser = sub.add_parser("script")
     script_parser.add_argument("name")
     script_parser.add_argument("path")
+    script_parser.add_argument(
+        "--description",
+        default="Managed Tactical automation script",
+    )
+    script_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=90,
+    )
+    script_parser.add_argument(
+        "--category",
+        default="DDELANEY (Linux):Automations",
+    )
 
     run_parser = sub.add_parser("run")
     run_parser.add_argument("agent_id")
     run_parser.add_argument("script_id", type=int)
+    run_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=90,
+    )
 
     args = parser.parse_args()
     hostname = "cets-mon-poc-01"
@@ -119,10 +156,18 @@ def main():
     try:
         if args.cmd == "agent":
             print(json.dumps(ensure_agent(hostname), indent=2))
+        elif args.cmd == "script-id":
+            print(json.dumps(get_script(args.name), indent=2))
         elif args.cmd == "script":
             print(
                 json.dumps(
-                    ensure_script(args.name, Path(args.path)),
+                    ensure_script(
+                        args.name,
+                        Path(args.path),
+                        args.description,
+                        args.timeout,
+                        args.category,
+                    ),
                     indent=2,
                 )
             )
@@ -130,7 +175,12 @@ def main():
             agent = ensure_agent(hostname)
             if agent["agent_id"] != args.agent_id:
                 fail("Agent ID does not match exact hostname lookup")
-            print(json.dumps(run_script(args.agent_id, args.script_id), indent=2))
+            print(
+                json.dumps(
+                    run_script(args.agent_id, args.script_id, args.timeout),
+                    indent=2,
+                )
+            )
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", "replace")
         fail(
