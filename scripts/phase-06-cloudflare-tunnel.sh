@@ -239,6 +239,22 @@ lookup_zone_id() {
   printf '%s' "$response" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data["result"][0]["id"])'
 }
 
+lookup_dns_record_id() {
+  local zone_id="$1"
+  local hostname="$2"
+  local response
+  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records?type=CNAME&name=${hostname}")"
+  printf '%s' "$response" | python3 - <<'PY'
+import json, sys
+data = json.load(sys.stdin)
+for item in data.get("result", []):
+    if item.get("name"):
+        print(item.get("id", ""))
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 create_dns_record() {
   local zone_id="$1"
   local hostname="$2"
@@ -254,11 +270,14 @@ create_dns_record() {
 }
 EOF
 )"
-  if response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records" "$payload")"; then
+  if record_id="$(lookup_dns_record_id "$zone_id" "$hostname")"; then
+    echo "INFO: Reusing existing DNS record for ${hostname}." >&2
+    response="$(cf_api_request PUT "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records/${record_id}" "$payload")"
+    record_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
+  elif response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records" "$payload")"; then
     record_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
   else
-    record_id="$(printf '%s' "$hostname")"
-    echo "INFO: Reusing existing DNS record for ${hostname}." >&2
+    return 1
   fi
   printf '%s\n' "$record_id"
 }
