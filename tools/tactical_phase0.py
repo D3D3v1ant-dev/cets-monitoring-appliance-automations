@@ -17,7 +17,7 @@ def fail(message: str, details=None, exit_code: int = 1):
     raise SystemExit(exit_code)
 
 
-def api_request(method: str, path: str, payload=None):
+def api_request(method: str, path: str, payload=None, timeout: int = 60):
     base = os.environ["TACTICAL_API_URL"].rstrip("/")
     key = os.environ["TACTICAL_API_KEY"]
     headers = {
@@ -34,7 +34,11 @@ def api_request(method: str, path: str, payload=None):
         headers=headers,
         method=method,
     )
-    with urllib.request.urlopen(req, context=ssl.create_default_context(), timeout=60) as resp:
+    with urllib.request.urlopen(
+        req,
+        context=ssl.create_default_context(),
+        timeout=timeout,
+    ) as resp:
         body = resp.read().decode("utf-8", "replace")
         return resp.status, body
 
@@ -112,7 +116,12 @@ def run_script(agent_id: str, script_id: int, timeout: int):
         "run_as_user": False,
         "timeout": timeout,
     }
-    status, response = api_request("POST", f"/agents/{agent_id}/runscript/", payload)
+    status, response = api_request(
+        "POST",
+        f"/agents/{agent_id}/runscript/",
+        payload,
+        timeout=max(timeout + 60, 120),
+    )
     return {"status": status, "response": json.loads(response)}
 
 
