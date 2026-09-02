@@ -4,7 +4,7 @@ Reusable automation assets for the CETS Linux Monitoring Appliance proof of conc
 
 ## Purpose
 
-This repository stores the reusable Tactical RMM automation scripts, helper tooling, and baseline audit artifacts developed during the appliance engineering process.
+This repository stores the reusable Tactical RMM automation scripts, helper tooling, baseline audit artifacts, and the serial phase profile used during the appliance engineering process.
 
 ## Current Contents
 
@@ -12,10 +12,13 @@ This repository stores the reusable Tactical RMM automation scripts, helper tool
 - `scripts/phase-01-baseline-audit.sh`
 - `scripts/phase-02-linux-baseline.sh`
 - `scripts/phase-03-docker-engine.sh`
+- `scripts/phase-04-monitoring-stack.sh`
 - `tools/tactical_phase0.py`
+- `profiles/cets-monitoring-appliance-phase-series.yaml`
 - `reports/baseline-report-2026-09-02.md`
 - `reports/linux-baseline-report-2026-09-02.md`
 - `reports/docker-engine-report-2026-09-02.md`
+- `reports/monitoring-stack-report-2026-09-02.md`
 
 ## Tactical Conventions
 
@@ -27,6 +30,9 @@ This repository stores the reusable Tactical RMM automation scripts, helper tool
   - `5` = Informational
   - any other non-zero = Error
   - `98` is reserved by Tactical for timeout handling
+- Serial phase profile:
+  - continue on `0`, `2`, or `5`
+  - stop on any other exit code
 
 ## Notes
 
