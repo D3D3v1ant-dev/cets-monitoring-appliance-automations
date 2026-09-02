@@ -146,8 +146,15 @@ create_tunnel_via_api() {
 
   local request_body response tunnel_id tunnel_token
   request_body="$(printf '{"name":"%s","config_src":"cloudflare"}' "$CLOUDFLARE_TUNNEL_NAME")"
-  response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel" "$request_body")"
-  tunnel_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
+  if response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel" "$request_body")"; then
+    tunnel_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
+  else
+    if tunnel_id="$(lookup_tunnel_id)"; then
+      echo "INFO: Reusing existing Cloudflare tunnel ${tunnel_id}." >&2
+    else
+      return 1
+    fi
+  fi
   tunnel_token="$(cf_api_request GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/token" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"])')"
   printf '%s\n' "$tunnel_id:$tunnel_token"
 }
@@ -193,8 +200,15 @@ create_access_app() {
 }
 EOF
 )"
-  response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps" "$payload")"
-  app_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
+  if response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps" "$payload")"; then
+    app_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
+  else
+    if app_id="$(lookup_access_app_id "$hostname")"; then
+      echo "INFO: Reusing existing Access app for ${hostname}." >&2
+    else
+      return 1
+    fi
+  fi
   printf '%s\n' "$app_id"
 }
 
@@ -240,8 +254,12 @@ create_dns_record() {
 }
 EOF
 )"
-  response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records" "$payload")"
-  record_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
+  if response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records" "$payload")"; then
+    record_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
+  else
+    record_id="$(printf '%s' "$hostname")"
+    echo "INFO: Reusing existing DNS record for ${hostname}." >&2
+  fi
   printf '%s\n' "$record_id"
 }
 
