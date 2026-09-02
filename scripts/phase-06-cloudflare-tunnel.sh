@@ -67,6 +67,11 @@ CLOUDFLARE_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-${CETS_CF_ACCOUNT_ID:-}}"
 CLOUDFLARE_TUNNEL_NAME_OVERRIDE="${CLOUDFLARE_TUNNEL_NAME_OVERRIDE:-}"
 CLOUDFLARE_TUNNEL_NAME="${CLOUDFLARE_TUNNEL_NAME:-}"
 CLOUDFLARE_TUNNEL_TOKEN="${CLOUDFLARE_TUNNEL_TOKEN:-}"
+CLOUDFLARE_EXISTING_TUNNEL_ID="${CLOUDFLARE_EXISTING_TUNNEL_ID:-}"
+CLOUDFLARE_EXISTING_LIBRE_APP_ID="${CLOUDFLARE_EXISTING_LIBRE_APP_ID:-}"
+CLOUDFLARE_EXISTING_CMK_APP_ID="${CLOUDFLARE_EXISTING_CMK_APP_ID:-}"
+CLOUDFLARE_EXISTING_LIBRE_DNS_ID="${CLOUDFLARE_EXISTING_LIBRE_DNS_ID:-}"
+CLOUDFLARE_EXISTING_CMK_DNS_ID="${CLOUDFLARE_EXISTING_CMK_DNS_ID:-}"
 CLOUDFLARE_PUBLIC_PREFIX_LIBRE="${CLOUDFLARE_PUBLIC_PREFIX_LIBRE:-libre}"
 CLOUDFLARE_PUBLIC_PREFIX_CMK="${CLOUDFLARE_PUBLIC_PREFIX_CMK:-cmk}"
 CLOUDFLARE_PUBLIC_HOSTNAMES="${CLOUDFLARE_PUBLIC_HOSTNAMES:-}"
@@ -264,7 +269,10 @@ EOF
 }
 
 if [[ -z "$CLOUDFLARE_TUNNEL_TOKEN" ]]; then
-  if CLOUDFLARE_TUNNEL_ID="$(lookup_tunnel_id)"; then
+  if [[ -n "$CLOUDFLARE_EXISTING_TUNNEL_ID" ]]; then
+    CLOUDFLARE_TUNNEL_ID="$CLOUDFLARE_EXISTING_TUNNEL_ID"
+    echo "INFO: Reusing explicit Cloudflare tunnel ${CLOUDFLARE_TUNNEL_ID}." >&2
+  elif CLOUDFLARE_TUNNEL_ID="$(lookup_tunnel_id)"; then
     CLOUDFLARE_TUNNEL_TOKEN=""
     echo "INFO: Reusing existing Cloudflare tunnel ${CLOUDFLARE_TUNNEL_ID}." >&2
   else
@@ -280,18 +288,34 @@ fi
 libre_hostname="${CLOUDFLARE_PUBLIC_HOSTNAMES%%,*}"
 cmk_hostname="${CLOUDFLARE_PUBLIC_HOSTNAMES##*,}"
 zone_id="$(lookup_zone_id)"
-if libre_app_id="$(lookup_access_app_id "$libre_hostname")"; then
+if [[ -n "$CLOUDFLARE_EXISTING_LIBRE_APP_ID" ]]; then
+  libre_app_id="$CLOUDFLARE_EXISTING_LIBRE_APP_ID"
+  echo "INFO: Reusing explicit Access app for LibreNMS." >&2
+elif libre_app_id="$(lookup_access_app_id "$libre_hostname")"; then
   echo "INFO: Reusing existing Access app for LibreNMS." >&2
 else
   libre_app_id="$(create_access_app "$libre_hostname" "http://127.0.0.1:8000" "LibreNMS Access for ${hostname_value}")"
 fi
-if cmk_app_id="$(lookup_access_app_id "$cmk_hostname")"; then
+if [[ -n "$CLOUDFLARE_EXISTING_CMK_APP_ID" ]]; then
+  cmk_app_id="$CLOUDFLARE_EXISTING_CMK_APP_ID"
+  echo "INFO: Reusing explicit Access app for Checkmk." >&2
+elif cmk_app_id="$(lookup_access_app_id "$cmk_hostname")"; then
   echo "INFO: Reusing existing Access app for Checkmk." >&2
 else
   cmk_app_id="$(create_access_app "$cmk_hostname" "http://127.0.0.1:8080" "Checkmk Access for ${hostname_value}")"
 fi
-libre_dns_id="$(create_dns_record "$zone_id" "$libre_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
-cmk_dns_id="$(create_dns_record "$zone_id" "$cmk_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
+if [[ -n "$CLOUDFLARE_EXISTING_LIBRE_DNS_ID" ]]; then
+  libre_dns_id="$CLOUDFLARE_EXISTING_LIBRE_DNS_ID"
+  echo "INFO: Reusing explicit DNS record for LibreNMS." >&2
+else
+  libre_dns_id="$(create_dns_record "$zone_id" "$libre_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
+fi
+if [[ -n "$CLOUDFLARE_EXISTING_CMK_DNS_ID" ]]; then
+  cmk_dns_id="$CLOUDFLARE_EXISTING_CMK_DNS_ID"
+  echo "INFO: Reusing explicit DNS record for Checkmk." >&2
+else
+  cmk_dns_id="$(create_dns_record "$zone_id" "$cmk_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
+fi
 
 cat >"$CLOUDFLARE_SERVICE_FILE" <<EOF
 [Unit]
