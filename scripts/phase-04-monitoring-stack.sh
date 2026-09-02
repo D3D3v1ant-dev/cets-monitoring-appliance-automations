@@ -207,7 +207,7 @@ services:
     env_file:
       - ./librenms.env
     ports:
-      - 127.0.0.1:8000:8000
+      - 0.0.0.0:8000:8000
     volumes:
       - cets_librenms_data:/data
     restart: unless-stopped
@@ -247,7 +247,7 @@ services:
     tmpfs:
       - /opt/omd/sites/cmk/tmp:uid=1000,gid=1000
     ports:
-      - 127.0.0.1:8080:5000
+      - 0.0.0.0:8080:5000
     volumes:
       - cets_checkmk_sites:/omd/sites
     restart: unless-stopped
@@ -263,11 +263,13 @@ Generated on: $(date --iso-8601=seconds)
 
 LibreNMS:
 - Base URL: http://127.0.0.1:8000
+- Published URL: http://<any-interface-ip>:8000
 - Env file: ${LIBRENMS_ENV}
 - Database password is stored in the env file above.
 
 Checkmk:
 - Base URL: http://127.0.0.1:8080/cmk/check_mk/
+- Published URL: http://<any-interface-ip>:8080/cmk/check_mk/
 - Env file: ${CHECKMK_ENV}
 - Initial cmkadmin password is stored in the env file above.
 
@@ -329,8 +331,8 @@ echo
 echo "=== AUDIT SUMMARY ==="
 echo "Result: ${overall_label}"
 echo "Hostname: ${hostname_value}"
-echo "LibreNMS URL: http://127.0.0.1:8000"
-echo "Checkmk URL: http://127.0.0.1:8080/cmk/check_mk/"
+echo "LibreNMS URL: http://${hostname_value}:8000"
+echo "Checkmk URL: http://${hostname_value}:8080/cmk/check_mk/"
 echo "LibreNMS HTTP status: ${librenms_http_status}"
 echo "Checkmk HTTP status: ${checkmk_http_status}"
 echo "LibreNMS env created this run: ${librenms_env_created}"
