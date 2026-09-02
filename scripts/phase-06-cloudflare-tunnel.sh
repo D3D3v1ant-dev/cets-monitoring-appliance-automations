@@ -73,6 +73,8 @@ CLOUDFLARE_PUBLIC_HOSTNAMES="${CLOUDFLARE_PUBLIC_HOSTNAMES:-}"
 CLOUDFLARE_ORIGINS="${CLOUDFLARE_ORIGINS:-}"
 CLOUDFLARE_ACCESS_EMAIL="${CLOUDFLARE_ACCESS_EMAIL:-ddelaney@cets.com.au}"
 CLOUDFLARE_ACCESS_SESSION_DURATION="${CLOUDFLARE_ACCESS_SESSION_DURATION:-24h}"
+CLOUDFLARE_ZONE_NAME="${CLOUDFLARE_ZONE_NAME:-cets.com.au}"
+CLOUDFLARE_ZONE_ID="${CLOUDFLARE_ZONE_ID:-}"
 CLOUDFLARE_CONFIG_DIR="${CLOUDFLARE_CONFIG_DIR:-/opt/cets/cloudflare}"
 CLOUDFLARE_CONFIG_FILE="${CLOUDFLARE_CONFIG_FILE:-${CLOUDFLARE_CONFIG_DIR}/config.yml}"
 CLOUDFLARE_LOG_FILE="${CLOUDFLARE_LOG_FILE:-/var/log/cets-cloudflare-tunnel.log}"
@@ -181,6 +183,37 @@ EOF
   printf '%s\n' "$app_id"
 }
 
+lookup_zone_id() {
+  if [[ -n "$CLOUDFLARE_ZONE_ID" ]]; then
+    printf '%s\n' "$CLOUDFLARE_ZONE_ID"
+    return 0
+  fi
+
+  local response
+  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/zones?name=${CLOUDFLARE_ZONE_NAME}&status=active")"
+  printf '%s' "$response" | python3 -c 'import json,sys; data=json.load(sys.stdin); print(data["result"][0]["id"])'
+}
+
+create_dns_record() {
+  local zone_id="$1"
+  local hostname="$2"
+  local target="$3"
+  local payload response record_id
+  payload="$(cat <<EOF
+{
+  "type": "CNAME",
+  "name": "${hostname}",
+  "content": "${target}",
+  "proxied": true,
+  "ttl": 1
+}
+EOF
+)"
+  response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records" "$payload")"
+  record_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
+  printf '%s\n' "$record_id"
+}
+
 if [[ -z "$CLOUDFLARE_TUNNEL_TOKEN" ]]; then
   tunnel_creds="$(create_tunnel_via_api)"
   CLOUDFLARE_TUNNEL_ID="${tunnel_creds%%:*}"
@@ -192,8 +225,11 @@ fi
 
 libre_hostname="${CLOUDFLARE_PUBLIC_HOSTNAMES%%,*}"
 cmk_hostname="${CLOUDFLARE_PUBLIC_HOSTNAMES##*,}"
+zone_id="$(lookup_zone_id)"
 libre_app_id="$(create_access_app "$libre_hostname" "http://127.0.0.1:8000" "LibreNMS Access for ${hostname_value}")"
 cmk_app_id="$(create_access_app "$cmk_hostname" "http://127.0.0.1:8080" "Checkmk Access for ${hostname_value}")"
+libre_dns_id="$(create_dns_record "$zone_id" "$libre_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
+cmk_dns_id="$(create_dns_record "$zone_id" "$cmk_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
 
 cat >"$CLOUDFLARE_SERVICE_FILE" <<EOF
 [Unit]
@@ -226,6 +262,8 @@ echo "Tunnel status: ${tunnel_status}"
 set_status "$EXIT_OK" "OK"
 echo "Access app created for LibreNMS: ${libre_hostname} (${libre_app_id})"
 echo "Access app created for Checkmk: ${cmk_hostname} (${cmk_app_id})"
+echo "DNS record created for LibreNMS: ${libre_hostname} (${libre_dns_id})"
+echo "DNS record created for Checkmk: ${cmk_hostname} (${cmk_dns_id})"
 
 echo
 echo "=== CETS MONITORING APPLIANCE CLOUDFLARE TUNNEL ==="
