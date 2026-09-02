@@ -112,6 +112,30 @@ logfile: ${CLOUDFLARE_LOG_FILE}
 EOF
 chmod 0640 "$CLOUDFLARE_CONFIG_FILE"
 
+cf_api_request() {
+  local method="$1"
+  local url="$2"
+  local data="${3:-}"
+  local response_file http_code response_body
+  response_file="$(mktemp)"
+  http_code="$(
+    curl -sS -o "$response_file" -w '%{http_code}' \
+      -X "$method" \
+      -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+      -H 'Content-Type: application/json' \
+      ${data:+--data "$data"} \
+      "$url" || true
+  )"
+  response_body="$(cat "$response_file")"
+  rm -f "$response_file"
+  if [[ "$http_code" != 2* ]]; then
+    echo "$http_code" >&2
+    printf '%s' "$response_body" >&2
+    return 1
+  fi
+  printf '%s' "$response_body"
+}
+
 create_tunnel_via_api() {
   if [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
     echo "ERROR: Cloudflare API token or account ID missing from Tactical global key store." >&2
@@ -120,20 +144,9 @@ create_tunnel_via_api() {
 
   local request_body response tunnel_id tunnel_token
   request_body="$(printf '{"name":"%s","config_src":"cloudflare"}' "$CLOUDFLARE_TUNNEL_NAME")"
-  response="$(
-    curl -fsSL \
-      "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel" \
-      -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-      -H 'Content-Type: application/json' \
-      --data "$request_body"
-  )"
+  response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel" "$request_body")"
   tunnel_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
-  tunnel_token="$(
-    curl -fsSL \
-      "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/token" \
-      -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-      | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"])'
-  )"
+  tunnel_token="$(cf_api_request GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel/${tunnel_id}/token" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"])')"
   printf '%s\n' "$tunnel_id:$tunnel_token"
 }
 
@@ -163,13 +176,7 @@ create_access_app() {
 }
 EOF
 )"
-  response="$(
-    curl -fsSL \
-      "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps" \
-      -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-      -H 'Content-Type: application/json' \
-      --data "$payload"
-  )"
+  response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps" "$payload")"
   app_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
   printf '%s\n' "$app_id"
 }
