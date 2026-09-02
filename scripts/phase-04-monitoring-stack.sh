@@ -69,7 +69,7 @@ wait_for_http() {
   local status=""
 
   for ((i = 1; i <= attempts; i++)); do
-    status="$ (
+    status="$(
       curl \
         --connect-timeout 2 \
         --max-time 10 \
