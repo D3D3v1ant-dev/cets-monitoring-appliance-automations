@@ -1,0 +1,75 @@
+profile_name: "CETS Monitoring Appliance - Phase Series"
+target_hostname: "cets-mon-poc-01"
+target_agent_id: "uKvvRrkLkMGYcdguEuDzzYgySzWUxMqBdtegkXIx"
+category: "DDELANEY (Linux):Automations"
+execution_mode: "serial"
+continue_on_exit_codes:
+  - 0
+  - 2
+  - 5
+stop_on_other_exit_codes: true
+notes:
+  - "Continue on OK, Warning, and Informational tactical results."
+  - "Stop on any non-published or error exit code."
+  - "Run only against the exact POC hostname and agent id."
+steps:
+  - order: 0
+    phase: "00"
+    name: "POC Roundtrip"
+    tactical_script_name: "CETS Monitoring Appliance - 00 POC Roundtrip"
+    tactical_script_id: 240
+    status: "passed"
+  - order: 1
+    phase: "01"
+    name: "Baseline Audit"
+    tactical_script_name: "CETS Monitoring Appliance - 01 Baseline Audit"
+    tactical_script_id: 241
+    status: "passed"
+  - order: 2
+    phase: "02"
+    name: "Linux Baseline"
+    tactical_script_name: "CETS Monitoring Appliance - 02 Linux Baseline"
+    tactical_script_id: 242
+    status: "passed"
+  - order: 3
+    phase: "03"
+    name: "Docker Engine"
+    tactical_script_name: "CETS Monitoring Appliance - 03 Docker Engine"
+    tactical_script_id: 243
+    status: "passed"
+  - order: 4
+    phase: "04"
+    name: "Monitoring Stack"
+    tactical_script_name: "CETS Monitoring Appliance - 04 Monitoring Stack"
+    tactical_script_id: 244
+    status: "passed_info"
+  - order: 5
+    phase: "05"
+    name: "SMTP Relay"
+    tactical_script_name: "CETS Monitoring Appliance - 05 SMTP Relay"
+    tactical_script_id: null
+    status: "planned"
+  - order: 6
+    phase: "06"
+    name: "Cloudflare Tunnel"
+    tactical_script_name: "CETS Monitoring Appliance - 06 Cloudflare Tunnel"
+    tactical_script_id: null
+    status: "planned"
+  - order: 7
+    phase: "07"
+    name: "Firewall"
+    tactical_script_name: "CETS Monitoring Appliance - 07 Firewall"
+    tactical_script_id: null
+    status: "planned"
+  - order: 8
+    phase: "08"
+    name: "Watchdogs"
+    tactical_script_name: "CETS Monitoring Appliance - 08 Watchdogs"
+    tactical_script_id: null
+    status: "planned"
+  - order: 9
+    phase: "09"
+    name: "Validation"
+    tactical_script_name: "CETS Monitoring Appliance - 09 Validation"
+    tactical_script_id: null
+    status: "planned"
