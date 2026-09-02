@@ -10,8 +10,10 @@ This repository stores the reusable Tactical RMM automation scripts, helper tool
 
 - `scripts/phase-00-poc-roundtrip.sh`
 - `scripts/phase-01-baseline-audit.sh`
+- `scripts/phase-02-linux-baseline.sh`
 - `tools/tactical_phase0.py`
 - `reports/baseline-report-2026-09-02.md`
+- `reports/linux-baseline-report-2026-09-02.md`
 
 ## Tactical Conventions
 
