@@ -152,6 +152,21 @@ create_tunnel_via_api() {
   printf '%s\n' "$tunnel_id:$tunnel_token"
 }
 
+lookup_tunnel_id() {
+  local response
+  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel")"
+  printf '%s' "$response" | python3 - "$CLOUDFLARE_TUNNEL_NAME" <<'PY'
+import json, sys
+name = sys.argv[1]
+data = json.load(sys.stdin)
+for item in data.get("result", []):
+    if item.get("name") == name:
+        print(item.get("id", ""))
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 create_access_app() {
   local hostname="$1"
   local service_url="$2"
@@ -181,6 +196,22 @@ EOF
   response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps" "$payload")"
   app_id="$(printf '%s' "$response" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["id"])')"
   printf '%s\n' "$app_id"
+}
+
+lookup_access_app_id() {
+  local hostname="$1"
+  local response
+  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps")"
+  printf '%s' "$response" | python3 - "$hostname" <<'PY'
+import json, sys
+hostname = sys.argv[1]
+data = json.load(sys.stdin)
+for item in data.get("result", []):
+    if item.get("domain") == hostname:
+        print(item.get("id", ""))
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 lookup_zone_id() {
@@ -215,10 +246,15 @@ EOF
 }
 
 if [[ -z "$CLOUDFLARE_TUNNEL_TOKEN" ]]; then
-  tunnel_creds="$(create_tunnel_via_api)"
-  CLOUDFLARE_TUNNEL_ID="${tunnel_creds%%:*}"
-  CLOUDFLARE_TUNNEL_TOKEN="${tunnel_creds#*:}"
-  echo "INFO: Created Cloudflare tunnel via API." >&2
+  if CLOUDFLARE_TUNNEL_ID="$(lookup_tunnel_id)"; then
+    CLOUDFLARE_TUNNEL_TOKEN=""
+    echo "INFO: Reusing existing Cloudflare tunnel ${CLOUDFLARE_TUNNEL_ID}." >&2
+  else
+    tunnel_creds="$(create_tunnel_via_api)"
+    CLOUDFLARE_TUNNEL_ID="${tunnel_creds%%:*}"
+    CLOUDFLARE_TUNNEL_TOKEN="${tunnel_creds#*:}"
+    echo "INFO: Created Cloudflare tunnel via API." >&2
+  fi
 else
   CLOUDFLARE_TUNNEL_ID="${CLOUDFLARE_TUNNEL_ID:-unknown}"
 fi
@@ -226,8 +262,16 @@ fi
 libre_hostname="${CLOUDFLARE_PUBLIC_HOSTNAMES%%,*}"
 cmk_hostname="${CLOUDFLARE_PUBLIC_HOSTNAMES##*,}"
 zone_id="$(lookup_zone_id)"
-libre_app_id="$(create_access_app "$libre_hostname" "http://127.0.0.1:8000" "LibreNMS Access for ${hostname_value}")"
-cmk_app_id="$(create_access_app "$cmk_hostname" "http://127.0.0.1:8080" "Checkmk Access for ${hostname_value}")"
+if libre_app_id="$(lookup_access_app_id "$libre_hostname")"; then
+  echo "INFO: Reusing existing Access app for LibreNMS." >&2
+else
+  libre_app_id="$(create_access_app "$libre_hostname" "http://127.0.0.1:8000" "LibreNMS Access for ${hostname_value}")"
+fi
+if cmk_app_id="$(lookup_access_app_id "$cmk_hostname")"; then
+  echo "INFO: Reusing existing Access app for Checkmk." >&2
+else
+  cmk_app_id="$(create_access_app "$cmk_hostname" "http://127.0.0.1:8080" "Checkmk Access for ${hostname_value}")"
+fi
 libre_dns_id="$(create_dns_record "$zone_id" "$libre_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
 cmk_dns_id="$(create_dns_record "$zone_id" "$cmk_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
 
