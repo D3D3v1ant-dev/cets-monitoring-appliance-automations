@@ -161,7 +161,7 @@ create_tunnel_via_api() {
 
 lookup_tunnel_id() {
   local response
-  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel")"
+  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/cfd_tunnel?is_deleted=false&name=${CLOUDFLARE_TUNNEL_NAME}")"
   printf '%s' "$response" | python3 - "$CLOUDFLARE_TUNNEL_NAME" <<'PY'
 import json, sys
 name = sys.argv[1]
@@ -215,7 +215,7 @@ EOF
 lookup_access_app_id() {
   local hostname="$1"
   local response
-  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps")"
+  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps?exact=true&domain=${hostname}")"
   printf '%s' "$response" | python3 - "$hostname" <<'PY'
 import json, sys
 hostname = sys.argv[1]
@@ -243,7 +243,7 @@ lookup_dns_record_id() {
   local zone_id="$1"
   local hostname="$2"
   local response
-  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records?type=CNAME&name=${hostname}")"
+  response="$(cf_api_request GET "https://api.cloudflare.com/client/v4/zones/${zone_id}/dns_records?type=CNAME&name=${hostname}&match=all")"
   printf '%s' "$response" | python3 - <<'PY'
 import json, sys
 data = json.load(sys.stdin)
