@@ -1,4 +1,6 @@
 profile_name: "CETS Monitoring Appliance - Phase Series"
+tactical_task_name: "CETS Monitoring Appliance Serial Run"
+tactical_task_id: 112
 target_hostname: "cets-mon-poc-01"
 target_agent_id: "uKvvRrkLkMGYcdguEuDzzYgySzWUxMqBdtegkXIx"
 category: "DDELANEY (Linux):Automations"
@@ -47,14 +49,14 @@ steps:
     phase: "05"
     name: "SMTP Relay"
     tactical_script_name: "CETS Monitoring Appliance - 05 SMTP Relay"
-    tactical_script_id: null
-    status: "planned"
+    tactical_script_id: 245
+    status: "passed_info"
   - order: 6
     phase: "06"
     name: "Cloudflare Tunnel"
     tactical_script_name: "CETS Monitoring Appliance - 06 Cloudflare Tunnel"
-    tactical_script_id: null
-    status: "planned"
+    tactical_script_id: 246
+    status: "passed_info"
   - order: 7
     phase: "07"
     name: "Firewall"

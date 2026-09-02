@@ -13,12 +13,17 @@ This repository stores the reusable Tactical RMM automation scripts, helper tool
 - `scripts/phase-02-linux-baseline.sh`
 - `scripts/phase-03-docker-engine.sh`
 - `scripts/phase-04-monitoring-stack.sh`
+- `scripts/phase-05-smtp-relay.sh`
+- `scripts/phase-06-cloudflare-tunnel.sh`
 - `tools/tactical_phase0.py`
 - `profiles/cets-monitoring-appliance-phase-series.yaml`
+- `docs/pathfinder/cets-monitoring-appliance-handoff-2026-09-02.md`
+- `docs/wiki-js/cets-monitoring-appliance-workflow.md`
 - `reports/baseline-report-2026-09-02.md`
 - `reports/linux-baseline-report-2026-09-02.md`
 - `reports/docker-engine-report-2026-09-02.md`
 - `reports/monitoring-stack-report-2026-09-02.md`
+- `reports/cloudflare-tunnel-report-2026-09-02.md`
 
 ## Tactical Conventions
 
