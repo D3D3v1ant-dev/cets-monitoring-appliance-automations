@@ -73,6 +73,7 @@ CLOUDFLARE_PUBLIC_HOSTNAMES="${CLOUDFLARE_PUBLIC_HOSTNAMES:-}"
 CLOUDFLARE_LIBRE_ORIGIN="${CLOUDFLARE_LIBRE_ORIGIN:-http://127.0.0.1:8000}"
 CLOUDFLARE_CMK_ORIGIN="${CLOUDFLARE_CMK_ORIGIN:-http://127.0.0.1:8080}"
 CLOUDFLARE_ACCESS_EMAIL="${CLOUDFLARE_ACCESS_EMAIL:-ddelaney@cets.com.au}"
+CLOUDFLARE_ACCESS_EMAILS="${CLOUDFLARE_ACCESS_EMAILS:-${CLOUDFLARE_ACCESS_EMAIL},it@cets.com.au}"
 CLOUDFLARE_ACCESS_SESSION_DURATION="${CLOUDFLARE_ACCESS_SESSION_DURATION:-24h}"
 CLOUDFLARE_ZONE_NAME="${CLOUDFLARE_ZONE_NAME:-cets.com.au}"
 CLOUDFLARE_ZONE_ID="${CLOUDFLARE_ZONE_ID:-}"
@@ -224,26 +225,8 @@ create_access_app() {
   local hostname="$1"
   local app_name="$2"
   local payload response app_id
-  payload="$(cat <<EOF
-{
-  "name": "${app_name}",
-  "domain": "${hostname}",
-  "type": "self_hosted",
-  "session_duration": "${CLOUDFLARE_ACCESS_SESSION_DURATION}",
-  "policies": [
-    {
-      "decision": "allow",
-      "include": [
-        {
-          "email": {
-            "email": "${CLOUDFLARE_ACCESS_EMAIL}"
-          }
-        }
-      ]
-    }
-  ]
-}
-EOF
+  payload="$(
+    access_app_payload "$hostname" "$app_name"
   )"
   if response="$(cf_api_request POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps" "$payload")"; then
     app_id="$(printf '%s' "$response" | extract_result_id)"
@@ -255,6 +238,46 @@ EOF
     fi
   fi
   printf '%s\n' "$app_id"
+}
+
+access_app_payload() {
+  local hostname="$1"
+  local app_name="$2"
+  python3 -c '
+import json
+import sys
+
+hostname, app_name, session_duration, emails_csv = sys.argv[1:5]
+emails = []
+seen = set()
+for raw in emails_csv.split(","):
+    email = raw.strip().lower()
+    if email and email not in seen:
+        emails.append(email)
+        seen.add(email)
+if not emails:
+    raise SystemExit("at least one Cloudflare Access email is required")
+include = [{"email": {"email": email}} for email in emails]
+payload = {
+    "name": app_name,
+    "domain": hostname,
+    "type": "self_hosted",
+    "session_duration": session_duration,
+    "policies": [{"decision": "allow", "include": include}],
+}
+print(json.dumps(payload, separators=(",", ":")))
+' "$hostname" "$app_name" "$CLOUDFLARE_ACCESS_SESSION_DURATION" "$CLOUDFLARE_ACCESS_EMAILS"
+}
+
+reconcile_access_app_policy() {
+  local app_id="$1"
+  local hostname="$2"
+  local app_name="$3"
+  local payload
+  payload="$(
+    access_app_payload "$hostname" "$app_name"
+  )"
+  cf_api_request PUT "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/access/apps/${app_id}" "$payload" >/dev/null
 }
 
 lookup_access_app_id() {
@@ -369,11 +392,13 @@ if libre_app_id="$(lookup_access_app_id "$libre_hostname")"; then
 else
   libre_app_id="$(create_access_app "$libre_hostname" "LibreNMS Access for ${hostname_value}")"
 fi
+reconcile_access_app_policy "$libre_app_id" "$libre_hostname" "LibreNMS Access for ${hostname_value}"
 if cmk_app_id="$(lookup_access_app_id "$cmk_hostname")"; then
   echo "INFO: Reusing existing Access app for Checkmk." >&2
 else
   cmk_app_id="$(create_access_app "$cmk_hostname" "Checkmk Access for ${hostname_value}")"
 fi
+reconcile_access_app_policy "$cmk_app_id" "$cmk_hostname" "Checkmk Access for ${hostname_value}"
 configure_tunnel_ingress "$CLOUDFLARE_TUNNEL_ID" "$libre_hostname" "$cmk_hostname"
 libre_dns_id="$(create_dns_record "$zone_id" "$libre_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
 cmk_dns_id="$(create_dns_record "$zone_id" "$cmk_hostname" "${CLOUDFLARE_TUNNEL_ID}.cfargotunnel.com")"
@@ -413,8 +438,8 @@ echo "Tunnel status: ${tunnel_status}"
 set_status "$EXIT_OK" "OK"
 echo "Tunnel ingress configured: ${libre_hostname} -> ${CLOUDFLARE_LIBRE_ORIGIN}"
 echo "Tunnel ingress configured: ${cmk_hostname} -> ${CLOUDFLARE_CMK_ORIGIN}"
-echo "Access app ensured for LibreNMS: ${libre_hostname} (${libre_app_id})"
-echo "Access app ensured for Checkmk: ${cmk_hostname} (${cmk_app_id})"
+echo "Access app and policy ensured for LibreNMS: ${libre_hostname} (${libre_app_id})"
+echo "Access app and policy ensured for Checkmk: ${cmk_hostname} (${cmk_app_id})"
 echo "DNS record ensured for LibreNMS: ${libre_hostname} (${libre_dns_id})"
 echo "DNS record ensured for Checkmk: ${cmk_hostname} (${cmk_dns_id})"
 
