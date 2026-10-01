@@ -202,8 +202,9 @@ Use the baseline report to compare later changes and identify regressions.
 **Tactical script:** `CETS Monitoring Appliance - 02 Linux Baseline`  
 **Script ID:** `242`
 
-This phase installs the core package set, creates the `/opt/cets` hierarchy,
-configures unattended upgrades, enables APT timers, and verifies outbound HTTPS.
+This phase installs the core package set, sets the system timezone to
+`Australia/Brisbane`, creates the `/opt/cets` hierarchy, configures unattended
+upgrades, enables APT timers, and verifies outbound HTTPS.
 
 The appliance layout is:
 
