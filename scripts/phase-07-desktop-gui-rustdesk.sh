@@ -73,6 +73,15 @@ package_installed() {
   dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'
 }
 
+default_if_zero() {
+  local value="$1"
+  if [[ "${value,,}" == "zero" ]]; then
+    printf ''
+  else
+    printf '%s' "$value"
+  fi
+}
+
 require_root
 
 EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-cets-mon-poc-01}"
@@ -102,8 +111,18 @@ RUSTDESK_RENDEZVOUS_SERVER="${RUSTDESK_RENDEZVOUS_SERVER:-}"
 RUSTDESK_RELAY_SERVER="${RUSTDESK_RELAY_SERVER:-}"
 RUSTDESK_API_SERVER="${RUSTDESK_API_SERVER:-}"
 RUSTDESK_KEY="${RUSTDESK_KEY:-}"
+RUSTDESK_VERSION="$(default_if_zero "$RUSTDESK_VERSION")"
+RUSTDESK_DEB_URL="$(default_if_zero "$RUSTDESK_DEB_URL")"
+RUSTDESK_RENDEZVOUS_SERVER="$(default_if_zero "$RUSTDESK_RENDEZVOUS_SERVER")"
+RUSTDESK_RELAY_SERVER="$(default_if_zero "$RUSTDESK_RELAY_SERVER")"
+RUSTDESK_API_SERVER="$(default_if_zero "$RUSTDESK_API_SERVER")"
+RUSTDESK_KEY="$(default_if_zero "$RUSTDESK_KEY")"
+if [[ -z "$RUSTDESK_VERSION" ]]; then
+  RUSTDESK_VERSION="latest"
+fi
 RUSTDESK_CONFIG_DIR="/root/.config/rustdesk"
 RUSTDESK_CONFIG_FILE="${RUSTDESK_CONFIG_DIR}/RustDesk2.toml"
+SHORTCUT_IP="${SHORTCUT_IP:-}"
 
 desktop_missing=()
 desktop_installed_now=()
@@ -142,6 +161,56 @@ for pkg in "${DESKTOP_PACKAGES[@]}"; do
 done
 echo "Desktop packages installed during this run: ${#desktop_installed_now[@]}"
 printf '%s\n' "${desktop_installed_now[@]:-none}"
+
+echo
+echo "=== DESKTOP SHORTCUTS ==="
+if [[ -z "$SHORTCUT_IP" || "${SHORTCUT_IP,,}" == "zero" ]]; then
+  SHORTCUT_IP="$(
+    hostname -I 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i !~ /^127\\./) {print $i; exit}}'
+  )"
+fi
+if [[ -z "$SHORTCUT_IP" ]]; then
+  SHORTCUT_IP="$hostname_value"
+fi
+
+create_desktop_shortcut() {
+  local target_dir="$1"
+  local owner="$2"
+  local group="$3"
+  local file_name="$4"
+  local display_name="$5"
+  local url="$6"
+
+  install -d -o "$owner" -g "$group" -m 0755 "$target_dir"
+  cat >"${target_dir}/${file_name}" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=${display_name}
+Comment=Open ${display_name}
+Exec=firefox-esr ${url}
+Icon=firefox-esr
+Terminal=false
+Categories=Network;WebBrowser;
+EOF
+  chmod 0755 "${target_dir}/${file_name}"
+  chown "$owner:$group" "${target_dir}/${file_name}"
+}
+
+shortcut_targets=("/etc/skel/Desktop:root:root")
+while IFS=: read -r user_name _ uid gid _ home_dir shell_path; do
+  if (( uid >= 1000 && uid < 60000 )) && [[ -d "$home_dir" ]] && [[ "$shell_path" != */nologin && "$shell_path" != */false ]]; then
+    group_name="$(getent group "$gid" | cut -d: -f1)"
+    shortcut_targets+=("${home_dir}/Desktop:${user_name}:${group_name:-$user_name}")
+  fi
+done </etc/passwd
+
+for target in "${shortcut_targets[@]}"; do
+  IFS=: read -r target_dir owner group <<<"$target"
+  create_desktop_shortcut "$target_dir" "$owner" "$group" "librenms.desktop" "LibreNMS" "http://${SHORTCUT_IP}:8000/"
+  create_desktop_shortcut "$target_dir" "$owner" "$group" "checkmk.desktop" "Checkmk" "http://${SHORTCUT_IP}:8080/cmk/check_mk/"
+done
+echo "Desktop shortcuts installed for LibreNMS and Checkmk using ${SHORTCUT_IP}."
 
 echo
 echo "=== RUSTDESK INSTALL ==="
@@ -295,6 +364,7 @@ echo "Desktop packages installed during run: ${#desktop_installed_now[@]}"
 echo "RustDesk installed: yes"
 echo "RustDesk version: ${rustdesk_after}"
 echo "RustDesk permanent password supplied: $(test -n "$RUSTDESK_PERMANENT_PASSWORD" && echo yes || echo no)"
+echo "Desktop shortcut host: ${SHORTCUT_IP}"
 echo "RustDesk service active: $(systemctl is-active rustdesk.service 2>/dev/null || echo missing)"
 echo "LightDM active: $(systemctl is-active lightdm.service 2>/dev/null || echo missing)"
 echo "Reboot required: $(test -f /var/run/reboot-required && echo yes || echo no)"
