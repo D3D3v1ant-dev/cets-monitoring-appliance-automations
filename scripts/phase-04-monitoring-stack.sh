@@ -25,6 +25,9 @@ set -euo pipefail
 #   CHECKMK_USERNAME={{global.cets_cmk_user}}
 #   CHECKMK_PASSWORD={{global.cets_cmk_pass}}
 #
+# Shared monitoring alert recipient:
+#   ALERT_RECIPIENT={{global.cets_alert_email}}
+#
 # Note: Checkmk's official Docker image uses CMK_PASSWORD for the built-in
 # cmkadmin user. CHECKMK_USERNAME is kept visible here for operator notes and
 # should normally be set to cmkadmin.
@@ -139,6 +142,9 @@ TACTICAL_LIBRENMS_ADMIN_USERNAME="${LIBRENMS_ADMIN_USERNAME:-}"
 TACTICAL_LIBRENMS_ADMIN_PASSWORD="${LIBRENMS_ADMIN_PASSWORD:-}"
 TACTICAL_CHECKMK_USERNAME="${CHECKMK_USERNAME:-cmkadmin}"
 TACTICAL_CHECKMK_PASSWORD="${CHECKMK_PASSWORD:-${CMK_PASSWORD:-}}"
+ALERT_RECIPIENT="${ALERT_RECIPIENT:-it@cets.com.au}"
+LOCAL_SMTP_RELAY_HOST="${LOCAL_SMTP_RELAY_HOST:-host.docker.internal}"
+LOCAL_SMTP_RELAY_PORT="${LOCAL_SMTP_RELAY_PORT:-25}"
 
 librenms_env_created="no"
 checkmk_env_created="no"
@@ -239,6 +245,8 @@ services:
       - --collation-server=utf8mb4_unicode_ci
     env_file:
       - ./librenms.env
+    extra_hosts:
+      - host.docker.internal:host-gateway
     volumes:
       - cets_librenms_db:/var/lib/mysql
     restart: unless-stopped
@@ -248,6 +256,8 @@ services:
     container_name: cets_librenms_redis
     env_file:
       - ./librenms.env
+    extra_hosts:
+      - host.docker.internal:host-gateway
     restart: unless-stopped
 
   librenms:
@@ -262,6 +272,8 @@ services:
       - redis
     env_file:
       - ./librenms.env
+    extra_hosts:
+      - host.docker.internal:host-gateway
     ports:
       - 0.0.0.0:8000:8000
     volumes:
@@ -280,6 +292,8 @@ services:
       - redis
     env_file:
       - ./librenms.env
+    extra_hosts:
+      - host.docker.internal:host-gateway
     environment:
       DISPATCHER_NODE_ID: dispatcher1
       SIDECAR_DISPATCHER: "1"
@@ -300,6 +314,10 @@ services:
     container_name: cets_checkmk
     env_file:
       - ./checkmk.env
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    environment:
+      MAIL_RELAY_HOST: host.docker.internal
     tmpfs:
       - /opt/omd/sites/cmk/tmp:uid=1000,gid=1000
     ports:
@@ -325,6 +343,8 @@ LibreNMS:
 - Database password is stored in the env file above.
 - Web admin username: ${librenms_admin_username:-not configured by this phase}
 - Web admin password source: $(test -n "$librenms_admin_password" && echo "Tactical global key store" || echo "not configured by this phase")
+- SMTP relay: ${LOCAL_SMTP_RELAY_HOST}:${LOCAL_SMTP_RELAY_PORT}
+- Alert recipient: ${ALERT_RECIPIENT}
 
 Checkmk:
 - Base URL: http://127.0.0.1:8080/cmk/check_mk/
@@ -333,6 +353,8 @@ Checkmk:
 - Web login username: cmkadmin
 - Requested username value: ${checkmk_username}
 - Initial cmkadmin password is stored in the env file above.
+- SMTP relay: ${LOCAL_SMTP_RELAY_HOST}
+- Alert recipient: ${ALERT_RECIPIENT}
 
 These files are root-readable only and must not be committed to version control.
 EOF
@@ -363,6 +385,8 @@ echo "LibreNMS admin username supplied: $(test -n "$librenms_admin_username" && 
 echo "LibreNMS admin password supplied: $(test -n "$librenms_admin_password" && echo yes || echo no)"
 echo "Checkmk username: cmkadmin"
 echo "Checkmk password source: $(test -n "$TACTICAL_CHECKMK_PASSWORD" && echo "Tactical global key store" || echo "existing/generated env file")"
+echo "Local SMTP relay: ${LOCAL_SMTP_RELAY_HOST}:${LOCAL_SMTP_RELAY_PORT}"
+echo "Alert recipient: ${ALERT_RECIPIENT}"
 echo "Bootstrap note: ${BOOTSTRAP_NOTE}"
 if (( memory_total_mb < 3072 )); then
   echo "INFO: Host memory is below 3 GiB; stack was deployed for POC validation but should be watched for capacity pressure."
@@ -374,6 +398,27 @@ timeout --foreground 900 docker pull "$LIBRENMS_IMAGE"
 (cd "$LIBRENMS_ROOT" && docker compose -p "$LIBRENMS_PROJECT" -f "$LIBRENMS_COMPOSE" up -d)
 librenms_http_status="$(wait_for_http "http://127.0.0.1:8000/" '^(200|302|303)$' 90 5)"
 echo "LibreNMS HTTP status: ${librenms_http_status}"
+
+librenms_mail_config="not-run"
+if (cd "$LIBRENMS_ROOT" && docker compose -p "$LIBRENMS_PROJECT" -f "$LIBRENMS_COMPOSE" exec -T --user librenms librenms sh -lc "
+  lnms config:set email_backend 'smtp' &&
+  lnms config:set email_from 'librenms@cets.com.au' &&
+  lnms config:set email_smtp_host '${LOCAL_SMTP_RELAY_HOST}' &&
+  lnms config:set email_smtp_port ${LOCAL_SMTP_RELAY_PORT} &&
+  lnms config:set email_smtp_timeout 10 &&
+  lnms config:set email_smtp_auth false &&
+  lnms config:set email_smtp_username NULL &&
+  lnms config:set email_smtp_password NULL &&
+  lnms config:set alert.default_mail '${ALERT_RECIPIENT}' --ignore-checks &&
+  lnms config:set alert.fixed-contacts false --ignore-checks
+" >/dev/null 2>&1); then
+  echo "LibreNMS mail relay configured for ${LOCAL_SMTP_RELAY_HOST}:${LOCAL_SMTP_RELAY_PORT}."
+  librenms_mail_config="configured"
+else
+  echo "WARNING: LibreNMS mail relay configuration did not complete." >&2
+  librenms_mail_config="failed"
+  set_status "$EXIT_WARN" "WARNING"
+fi
 
 if [[ -n "$librenms_admin_username" || -n "$librenms_admin_password" ]]; then
   if [[ -z "$librenms_admin_username" || -z "$librenms_admin_password" ]]; then
@@ -399,6 +444,40 @@ timeout --foreground 900 docker pull "$CHECKMK_IMAGE"
 checkmk_http_status="$(wait_for_http "http://127.0.0.1:8080/cmk/check_mk/login.py" '^(200|302|303)$' 120 5)"
 echo "Checkmk HTTP status: ${checkmk_http_status}"
 
+checkmk_mail_config="not-run"
+if (cd "$CHECKMK_ROOT" && docker compose -p "$CHECKMK_PROJECT" -f "$CHECKMK_COMPOSE" exec -T checkmk python3 - "$ALERT_RECIPIENT" <<'PY'
+from pathlib import Path
+from pprint import pformat
+import sys
+
+recipient = sys.argv[1]
+path = Path("/omd/sites/cmk/etc/check_mk/multisite.d/wato/users.mk")
+namespace = {"multisite_users": {}}
+if path.exists():
+    exec(path.read_text(encoding="utf-8"), namespace)
+users = namespace.get("multisite_users", {})
+cmkadmin = users.setdefault("cmkadmin", {"alias": "cmkadmin", "roles": ["admin"], "connector": "htpasswd", "locked": False})
+cmkadmin["email"] = recipient
+cmkadmin["contactgroups"] = ["all"]
+cmkadmin["notifications_enabled"] = True
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text("multisite_users.update(%s)\n" % pformat(users, sort_dicts=True), encoding="utf-8")
+PY
+); then
+  if (cd "$CHECKMK_ROOT" && docker compose -p "$CHECKMK_PROJECT" -f "$CHECKMK_COMPOSE" exec -T --user cmk checkmk cmk -R >/dev/null 2>&1); then
+    echo "Checkmk cmkadmin contact email configured for ${ALERT_RECIPIENT}."
+    checkmk_mail_config="configured"
+  else
+    echo "WARNING: Checkmk contact email was written, but configuration reload did not complete." >&2
+    checkmk_mail_config="reload-failed"
+    set_status "$EXIT_WARN" "WARNING"
+  fi
+else
+  echo "WARNING: Checkmk contact email configuration did not complete." >&2
+  checkmk_mail_config="failed"
+  set_status "$EXIT_WARN" "WARNING"
+fi
+
 echo
 echo "=== STACK STATUS ==="
 docker ps --format 'NAME={{.Names}} IMAGE={{.Image}} STATUS={{.Status}} PORTS={{.Ports}}' | grep '^NAME='
@@ -423,7 +502,10 @@ echo "LibreNMS env created this run: ${librenms_env_created}"
 echo "Checkmk env created this run: ${checkmk_env_created}"
 echo "LibreNMS DB username: ${librenms_db_username}"
 echo "LibreNMS admin bootstrap: ${librenms_admin_bootstrap}"
+echo "LibreNMS mail config: ${librenms_mail_config}"
 echo "Checkmk username: cmkadmin"
+echo "Checkmk mail config: ${checkmk_mail_config}"
+echo "Alert recipient: ${ALERT_RECIPIENT}"
 echo "Credential password values printed: no"
 echo "Low-memory advisory: $( (( memory_total_mb < 3072 )) && echo yes || echo no )"
 echo "Reboot required: $(test -f /var/run/reboot-required && echo yes || echo no)"
