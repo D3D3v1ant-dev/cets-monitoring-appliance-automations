@@ -14,17 +14,17 @@ set -euo pipefail
 # into the script action as environment variables exactly as shown below.
 #
 # Required for unattended RustDesk access:
-#   RUSTDESK_PERMANENT_PASSWORD={{global.cets_rustdesk_permanent_password}}
+#   RUSTDESK_PERMANENT_PASSWORD={{global.cets_rd_perm_pass}}
 #
 # Optional for self-hosted RustDesk infrastructure:
-#   RUSTDESK_RENDEZVOUS_SERVER={{global.cets_rustdesk_rendezvous_server}}
-#   RUSTDESK_RELAY_SERVER={{global.cets_rustdesk_relay_server}}
-#   RUSTDESK_API_SERVER={{global.cets_rustdesk_api_server}}
-#   RUSTDESK_KEY={{global.cets_rustdesk_key}}
+#   RUSTDESK_RENDEZVOUS_SERVER={{global.cets_rd_rendezvous}}
+#   RUSTDESK_RELAY_SERVER={{global.cets_rd_relay}}
+#   RUSTDESK_API_SERVER={{global.cets_rd_api}}
+#   RUSTDESK_KEY={{global.cets_rd_key}}
 #
 # Optional package pinning / override:
-#   RUSTDESK_VERSION={{global.cets_rustdesk_version}}
-#   RUSTDESK_DEB_URL={{global.cets_rustdesk_deb_url}}
+#   RUSTDESK_VERSION={{global.cets_rd_version}}
+#   RUSTDESK_DEB_URL={{global.cets_rd_deb_url}}
 
 on_error() {
   local line="$1"
