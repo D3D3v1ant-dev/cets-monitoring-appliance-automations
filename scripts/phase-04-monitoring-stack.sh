@@ -14,16 +14,16 @@ set -euo pipefail
 # into the script action as environment variables exactly as shown below.
 #
 # LibreNMS database credentials:
-#   LIBRENMS_DB_USERNAME={{global.cets_librenms_db_username}}
-#   LIBRENMS_DB_PASSWORD={{global.cets_librenms_db_password}}
+#   LIBRENMS_DB_USERNAME={{global.cets_lnms_db_user}}
+#   LIBRENMS_DB_PASSWORD={{global.cets_lnms_db_pass}}
 #
 # LibreNMS web admin bootstrap credentials:
-#   LIBRENMS_ADMIN_USERNAME={{global.cets_librenms_admin_username}}
-#   LIBRENMS_ADMIN_PASSWORD={{global.cets_librenms_admin_password}}
+#   LIBRENMS_ADMIN_USERNAME={{global.cets_lnms_admin_user}}
+#   LIBRENMS_ADMIN_PASSWORD={{global.cets_lnms_admin_pass}}
 #
 # Checkmk web login credentials:
-#   CHECKMK_USERNAME={{global.cets_checkmk_username}}
-#   CHECKMK_PASSWORD={{global.cets_checkmk_password}}
+#   CHECKMK_USERNAME={{global.cets_cmk_user}}
+#   CHECKMK_PASSWORD={{global.cets_cmk_pass}}
 #
 # Note: Checkmk's official Docker image uses CMK_PASSWORD for the built-in
 # cmkadmin user. CHECKMK_USERNAME is kept visible here for operator notes and
