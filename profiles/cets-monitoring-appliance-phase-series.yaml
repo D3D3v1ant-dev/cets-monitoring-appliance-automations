@@ -59,19 +59,25 @@ steps:
     status: "passed_info"
   - order: 7
     phase: "07"
-    name: "Firewall"
-    tactical_script_name: "CETS Monitoring Appliance - 07 Firewall"
-    tactical_script_id: null
-    status: "planned"
+    name: "Desktop GUI and RustDesk"
+    tactical_script_name: "CETS Monitoring Appliance - 07 Desktop GUI and RustDesk"
+    tactical_script_id: 260
+    status: "passed_info"
   - order: 8
     phase: "08"
-    name: "Watchdogs"
-    tactical_script_name: "CETS Monitoring Appliance - 08 Watchdogs"
+    name: "Firewall"
+    tactical_script_name: "CETS Monitoring Appliance - 08 Firewall"
     tactical_script_id: null
     status: "planned"
   - order: 9
     phase: "09"
+    name: "Watchdogs"
+    tactical_script_name: "CETS Monitoring Appliance - 09 Watchdogs"
+    tactical_script_id: null
+    status: "planned"
+  - order: 10
+    phase: "10"
     name: "Validation"
-    tactical_script_name: "CETS Monitoring Appliance - 09 Validation"
+    tactical_script_name: "CETS Monitoring Appliance - 10 Validation"
     tactical_script_id: null
     status: "planned"
