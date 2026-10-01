@@ -8,6 +8,14 @@ set -euo pipefail
 # any other non-zero = Error / fail
 # 98 is reserved by Tactical for timeout handling.
 
+# Tactical global key store inputs for this phase:
+#
+# SMTP_AUTH_USERNAME={{global.cets_gmail_smtp_user}}
+# SMTP_AUTH_PASSWORD={{global.cets_gmail_smtp_app_pw}}
+# POSTFIX_TEST_RECIPIENT={{global.cets_alert_email}}
+#
+# cets_alert_email should normally be it@cets.com.au.
+
 on_error() {
   local line="$1"
   local cmd="$2"
@@ -67,7 +75,7 @@ SMTP_HOSTNAME="${SMTP_HOSTNAME:-${hostname_value}}"
 SMTP_USE_TLS="${SMTP_USE_TLS:-yes}"
 SMTP_LISTEN_PORT="${SMTP_LISTEN_PORT:-25}"
 AUTO_DETECT_CLIENT_NETWORKS="${AUTO_DETECT_CLIENT_NETWORKS:-yes}"
-DEFAULT_CLIENT_NETWORKS="${DEFAULT_CLIENT_NETWORKS:-127.0.0.0/8,10.96.17.0/22}"
+DEFAULT_CLIENT_NETWORKS="${DEFAULT_CLIENT_NETWORKS:-127.0.0.0/8,10.96.17.0/22,172.16.0.0/12}"
 ALLOWED_CLIENT_NETWORKS="${ALLOWED_CLIENT_NETWORKS:-}"
 SMTP_AUTH_USERNAME="${SMTP_AUTH_USERNAME:-${CETS_GMAIL_SMTP_USER:-}}"
 SMTP_AUTH_PASSWORD="${SMTP_AUTH_PASSWORD:-${CETS_GMAIL_SMTP_APP_PW:-}}"
@@ -98,7 +106,7 @@ detect_local_subnet() {
 
 if [[ -z "$ALLOWED_CLIENT_NETWORKS" ]]; then
   if [[ "$AUTO_DETECT_CLIENT_NETWORKS" == "yes" ]] && detected_subnet="$(detect_local_subnet)"; then
-    ALLOWED_CLIENT_NETWORKS="127.0.0.0/8,${detected_subnet}"
+    ALLOWED_CLIENT_NETWORKS="127.0.0.0/8,${detected_subnet},172.16.0.0/12"
   else
     ALLOWED_CLIENT_NETWORKS="$DEFAULT_CLIENT_NETWORKS"
   fi
