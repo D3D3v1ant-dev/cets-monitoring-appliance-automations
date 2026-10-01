@@ -15,6 +15,7 @@ This repository stores the reusable Tactical RMM automation scripts, helper tool
 - `scripts/phase-04-monitoring-stack.sh`
 - `scripts/phase-05-smtp-relay.sh`
 - `scripts/phase-06-cloudflare-tunnel.sh`
+- `scripts/phase-07-desktop-gui-rustdesk.sh`
 - `tools/tactical_phase0.py`
 - `profiles/cets-monitoring-appliance-phase-series.yaml`
 - `docs/pathfinder/cets-monitoring-appliance-handoff-2026-09-02.md`
