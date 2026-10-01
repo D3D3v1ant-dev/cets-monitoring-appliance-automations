@@ -213,6 +213,34 @@ done
 echo "Desktop shortcuts installed for LibreNMS and Checkmk using ${SHORTCUT_IP}."
 
 echo
+echo "=== FIREFOX BOOKMARKS POLICY ==="
+FIREFOX_BIN="$(readlink -f "$(command -v firefox-esr)")"
+FIREFOX_POLICY_DIR="$(dirname "$FIREFOX_BIN")/distribution"
+FIREFOX_POLICY_FILE="${FIREFOX_POLICY_DIR}/policies.json"
+install -d -o root -g root -m 0755 "$FIREFOX_POLICY_DIR"
+python3 - "$FIREFOX_POLICY_FILE" "$SHORTCUT_IP" <<'PY'
+import json
+import sys
+
+path, host = sys.argv[1:3]
+payload = {
+    "policies": {
+        "DisplayBookmarksToolbar": "always",
+        "ManagedBookmarks": [
+            {"toplevel_name": "CETS"},
+            {"name": "LibreNMS", "url": f"http://{host}:8000/"},
+            {"name": "Checkmk", "url": f"http://{host}:8080/cmk/check_mk/"},
+        ],
+    }
+}
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle, indent=2)
+    handle.write("\n")
+PY
+chmod 0644 "$FIREFOX_POLICY_FILE"
+echo "Firefox managed bookmarks policy: ${FIREFOX_POLICY_FILE}"
+
+echo
 echo "=== RUSTDESK INSTALL ==="
 arch="$(dpkg --print-architecture)"
 case "$arch" in
@@ -365,6 +393,7 @@ echo "RustDesk installed: yes"
 echo "RustDesk version: ${rustdesk_after}"
 echo "RustDesk permanent password supplied: $(test -n "$RUSTDESK_PERMANENT_PASSWORD" && echo yes || echo no)"
 echo "Desktop shortcut host: ${SHORTCUT_IP}"
+echo "Firefox bookmarks policy: ${FIREFOX_POLICY_FILE}"
 echo "RustDesk service active: $(systemctl is-active rustdesk.service 2>/dev/null || echo missing)"
 echo "LightDM active: $(systemctl is-active lightdm.service 2>/dev/null || echo missing)"
 echo "Reboot required: $(test -f /var/run/reboot-required && echo yes || echo no)"
