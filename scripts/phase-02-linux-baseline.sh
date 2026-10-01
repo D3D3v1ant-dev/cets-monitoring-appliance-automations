@@ -58,6 +58,7 @@ package_installed() {
 require_root
 
 TARGET_HOSTNAME="cets-mon-poc-01"
+DEFAULT_TIMEZONE="${DEFAULT_TIMEZONE:-Australia/Brisbane}"
 hostname_value="$(hostname)"
 if [[ "$hostname_value" != "$TARGET_HOSTNAME" ]]; then
   echo "ERROR: Expected hostname ${TARGET_HOSTNAME}, found ${hostname_value}." >&2
@@ -74,6 +75,7 @@ PACKAGES=(
   lsb-release
   python3
   python3-venv
+  tzdata
   unattended-upgrades
   unzip
   wget
@@ -146,6 +148,22 @@ echo "Installed during this run: ${#packages_installed_now[@]}"
 printf '%s\n' "${packages_installed_now[@]:-none}"
 
 echo
+echo "=== TIMEZONE ==="
+if [[ ! -f "/usr/share/zoneinfo/${DEFAULT_TIMEZONE}" ]]; then
+  echo "ERROR: Timezone ${DEFAULT_TIMEZONE} is not available on this host." >&2
+  exit "$EXIT_ERROR"
+fi
+if command -v timedatectl >/dev/null 2>&1; then
+  timedatectl set-timezone "$DEFAULT_TIMEZONE"
+else
+  ln -sfn "/usr/share/zoneinfo/${DEFAULT_TIMEZONE}" /etc/localtime
+  printf '%s\n' "$DEFAULT_TIMEZONE" >/etc/timezone
+fi
+timezone_value="$(cat /etc/timezone 2>/dev/null || timedatectl show --property=Timezone --value 2>/dev/null || echo unknown)"
+echo "Configured timezone: ${timezone_value}"
+echo "Current local time: $(date --iso-8601=seconds)"
+
+echo
 echo "=== DIRECTORY LAYOUT ==="
 for dir in "${DIRECTORIES[@]}"; do
   install -d -o root -g root -m 0755 "$dir"
@@ -204,6 +222,7 @@ echo "Result: ${overall_label}"
 echo "Hostname: ${hostname_value}"
 echo "Packages installed during run: ${#packages_installed_now[@]}"
 echo "Core package set present: yes"
+echo "Timezone: ${timezone_value}"
 echo "Directory root present: $(test -d /opt/cets && echo yes || echo no)"
 echo "Unattended upgrades enabled: $(systemctl is-enabled unattended-upgrades.service)"
 echo "Unattended upgrades active: $(systemctl is-active unattended-upgrades.service)"
