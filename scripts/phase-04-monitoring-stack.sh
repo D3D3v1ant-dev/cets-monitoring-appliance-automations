@@ -8,6 +8,27 @@ set -euo pipefail
 # any other non-zero = Error / fail
 # 98 is reserved by Tactical for timeout handling.
 
+# Tactical global key store inputs for this phase:
+#
+# Add these as Tactical global custom fields / key-store entries, then map them
+# into the script action as environment variables exactly as shown below.
+#
+# LibreNMS database credentials:
+#   LIBRENMS_DB_USERNAME={{global.cets_librenms_db_username}}
+#   LIBRENMS_DB_PASSWORD={{global.cets_librenms_db_password}}
+#
+# LibreNMS web admin bootstrap credentials:
+#   LIBRENMS_ADMIN_USERNAME={{global.cets_librenms_admin_username}}
+#   LIBRENMS_ADMIN_PASSWORD={{global.cets_librenms_admin_password}}
+#
+# Checkmk web login credentials:
+#   CHECKMK_USERNAME={{global.cets_checkmk_username}}
+#   CHECKMK_PASSWORD={{global.cets_checkmk_password}}
+#
+# Note: Checkmk's official Docker image uses CMK_PASSWORD for the built-in
+# cmkadmin user. CHECKMK_USERNAME is kept visible here for operator notes and
+# should normally be set to cmkadmin.
+
 on_error() {
   local line="$1"
   local cmd="$2"
@@ -112,22 +133,47 @@ CHECKMK_PROJECT="cets-checkmk"
 LIBRENMS_IMAGE="librenms/librenms:latest"
 CHECKMK_IMAGE="checkmk/check-mk-community:2.5.0-latest"
 
+TACTICAL_LIBRENMS_DB_USERNAME="${LIBRENMS_DB_USERNAME:-${LIBRENMS_DB_USER:-}}"
+TACTICAL_LIBRENMS_DB_PASSWORD="${LIBRENMS_DB_PASSWORD:-}"
+TACTICAL_LIBRENMS_ADMIN_USERNAME="${LIBRENMS_ADMIN_USERNAME:-}"
+TACTICAL_LIBRENMS_ADMIN_PASSWORD="${LIBRENMS_ADMIN_PASSWORD:-}"
+TACTICAL_CHECKMK_USERNAME="${CHECKMK_USERNAME:-cmkadmin}"
+TACTICAL_CHECKMK_PASSWORD="${CHECKMK_PASSWORD:-${CMK_PASSWORD:-}}"
+
 librenms_env_created="no"
 checkmk_env_created="no"
+librenms_admin_bootstrap="not-requested"
 
 for dir in "$STACK_ROOT" "$LIBRENMS_ROOT" "$CHECKMK_ROOT"; do
   install -d -o root -g root -m 0750 "$dir"
 done
 
+librenms_db_username=""
 librenms_db_password=""
+librenms_admin_username="$TACTICAL_LIBRENMS_ADMIN_USERNAME"
+librenms_admin_password="$TACTICAL_LIBRENMS_ADMIN_PASSWORD"
+checkmk_username="$TACTICAL_CHECKMK_USERNAME"
 checkmk_password=""
 
 if [[ -f "$LIBRENMS_ENV" ]]; then
   # shellcheck disable=SC1090
   . "$LIBRENMS_ENV"
+  librenms_db_username="${MYSQL_USER:-${DB_USER:-}}"
   librenms_db_password="${MYSQL_PASSWORD:-${DB_PASSWORD:-}}"
 else
   librenms_env_created="yes"
+fi
+
+if [[ -n "$TACTICAL_LIBRENMS_DB_USERNAME" ]]; then
+  librenms_db_username="$TACTICAL_LIBRENMS_DB_USERNAME"
+fi
+
+if [[ -z "$librenms_db_username" ]]; then
+  librenms_db_username="librenms"
+fi
+
+if [[ -n "$TACTICAL_LIBRENMS_DB_PASSWORD" ]]; then
+  librenms_db_password="$TACTICAL_LIBRENMS_DB_PASSWORD"
 fi
 
 if [[ -z "$librenms_db_password" ]]; then
@@ -140,11 +186,11 @@ PUID=1000
 PGID=1000
 MARIADB_RANDOM_ROOT_PASSWORD=yes
 MYSQL_DATABASE=librenms
-MYSQL_USER=librenms
+MYSQL_USER=${librenms_db_username}
 MYSQL_PASSWORD=${librenms_db_password}
 DB_HOST=db
 DB_NAME=librenms
-DB_USER=librenms
+DB_USER=${librenms_db_username}
 DB_PASSWORD=${librenms_db_password}
 DB_TIMEOUT=60
 REDIS_HOST=redis
@@ -160,12 +206,22 @@ else
   checkmk_env_created="yes"
 fi
 
+if [[ -n "$TACTICAL_CHECKMK_PASSWORD" ]]; then
+  checkmk_password="$TACTICAL_CHECKMK_PASSWORD"
+fi
+
 if [[ -z "$checkmk_password" ]]; then
   checkmk_password="$(generate_secret)"
 fi
 
+if [[ "$checkmk_username" != "cmkadmin" ]]; then
+  echo "WARNING: Checkmk Docker login user is cmkadmin; requested CHECKMK_USERNAME=${checkmk_username} will be recorded only." >&2
+  set_status "$EXIT_WARN" "WARNING"
+fi
+
 cat >"$CHECKMK_ENV" <<EOF
 TZ=Etc/UTC
+CHECKMK_USERNAME=${checkmk_username}
 CMK_PASSWORD=${checkmk_password}
 EOF
 chmod 0640 "$CHECKMK_ENV"
@@ -265,12 +321,17 @@ LibreNMS:
 - Base URL: http://127.0.0.1:8000
 - Published URL: http://<any-interface-ip>:8000
 - Env file: ${LIBRENMS_ENV}
+- Database username: ${librenms_db_username}
 - Database password is stored in the env file above.
+- Web admin username: ${librenms_admin_username:-not configured by this phase}
+- Web admin password source: $(test -n "$librenms_admin_password" && echo "Tactical global key store" || echo "not configured by this phase")
 
 Checkmk:
 - Base URL: http://127.0.0.1:8080/cmk/check_mk/
 - Published URL: http://<any-interface-ip>:8080/cmk/check_mk/
 - Env file: ${CHECKMK_ENV}
+- Web login username: cmkadmin
+- Requested username value: ${checkmk_username}
 - Initial cmkadmin password is stored in the env file above.
 
 These files are root-readable only and must not be committed to version control.
@@ -296,6 +357,12 @@ echo "Memory total (MiB): ${memory_total_mb}"
 echo "Memory available before deploy (MiB): ${available_mb}"
 echo "LibreNMS env created this run: ${librenms_env_created}"
 echo "Checkmk env created this run: ${checkmk_env_created}"
+echo "LibreNMS DB username: ${librenms_db_username}"
+echo "LibreNMS DB password source: $(test -n "$TACTICAL_LIBRENMS_DB_PASSWORD" && echo "Tactical global key store" || echo "existing/generated env file")"
+echo "LibreNMS admin username supplied: $(test -n "$librenms_admin_username" && echo yes || echo no)"
+echo "LibreNMS admin password supplied: $(test -n "$librenms_admin_password" && echo yes || echo no)"
+echo "Checkmk username: cmkadmin"
+echo "Checkmk password source: $(test -n "$TACTICAL_CHECKMK_PASSWORD" && echo "Tactical global key store" || echo "existing/generated env file")"
 echo "Bootstrap note: ${BOOTSTRAP_NOTE}"
 if (( memory_total_mb < 3072 )); then
   echo "INFO: Host memory is below 3 GiB; stack was deployed for POC validation but should be watched for capacity pressure."
@@ -307,6 +374,23 @@ timeout --foreground 900 docker pull "$LIBRENMS_IMAGE"
 (cd "$LIBRENMS_ROOT" && docker compose -p "$LIBRENMS_PROJECT" -f "$LIBRENMS_COMPOSE" up -d)
 librenms_http_status="$(wait_for_http "http://127.0.0.1:8000/" '^(200|302|303)$' 90 5)"
 echo "LibreNMS HTTP status: ${librenms_http_status}"
+
+if [[ -n "$librenms_admin_username" || -n "$librenms_admin_password" ]]; then
+  if [[ -z "$librenms_admin_username" || -z "$librenms_admin_password" ]]; then
+    echo "WARNING: LibreNMS admin username/password must both be supplied to bootstrap a web admin." >&2
+    librenms_admin_bootstrap="incomplete"
+    set_status "$EXIT_WARN" "WARNING"
+  else
+    if (cd "$LIBRENMS_ROOT" && docker compose -p "$LIBRENMS_PROJECT" -f "$LIBRENMS_COMPOSE" exec -T --user librenms librenms lnms user:add --password="$librenms_admin_password" --role=admin "$librenms_admin_username" >/dev/null 2>&1); then
+      echo "LibreNMS admin user ensured from Tactical global key store."
+      librenms_admin_bootstrap="created"
+    else
+      echo "WARNING: LibreNMS admin user bootstrap did not complete; user may already exist or LibreNMS may not be ready for user management." >&2
+      librenms_admin_bootstrap="not-updated"
+      set_status "$EXIT_WARN" "WARNING"
+    fi
+  fi
+fi
 
 echo
 echo "=== CHECKMK DEPLOY ==="
@@ -337,6 +421,10 @@ echo "LibreNMS HTTP status: ${librenms_http_status}"
 echo "Checkmk HTTP status: ${checkmk_http_status}"
 echo "LibreNMS env created this run: ${librenms_env_created}"
 echo "Checkmk env created this run: ${checkmk_env_created}"
+echo "LibreNMS DB username: ${librenms_db_username}"
+echo "LibreNMS admin bootstrap: ${librenms_admin_bootstrap}"
+echo "Checkmk username: cmkadmin"
+echo "Credential password values printed: no"
 echo "Low-memory advisory: $( (( memory_total_mb < 3072 )) && echo yes || echo no )"
 echo "Reboot required: $(test -f /var/run/reboot-required && echo yes || echo no)"
 
