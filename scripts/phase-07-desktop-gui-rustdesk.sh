@@ -8,6 +8,24 @@ set -euo pipefail
 # any other non-zero = Error / fail
 # 98 is reserved by Tactical for timeout handling.
 
+# Tactical global key store inputs for this phase:
+#
+# Add these as Tactical global custom fields / key-store entries, then map them
+# into the script action as environment variables exactly as shown below.
+#
+# Required for unattended RustDesk access:
+#   RUSTDESK_PERMANENT_PASSWORD={{global.cets_rustdesk_permanent_password}}
+#
+# Optional for self-hosted RustDesk infrastructure:
+#   RUSTDESK_RENDEZVOUS_SERVER={{global.cets_rustdesk_rendezvous_server}}
+#   RUSTDESK_RELAY_SERVER={{global.cets_rustdesk_relay_server}}
+#   RUSTDESK_API_SERVER={{global.cets_rustdesk_api_server}}
+#   RUSTDESK_KEY={{global.cets_rustdesk_key}}
+#
+# Optional package pinning / override:
+#   RUSTDESK_VERSION={{global.cets_rustdesk_version}}
+#   RUSTDESK_DEB_URL={{global.cets_rustdesk_deb_url}}
+
 on_error() {
   local line="$1"
   local cmd="$2"
@@ -276,6 +294,7 @@ echo "Hostname: ${hostname_value}"
 echo "Desktop packages installed during run: ${#desktop_installed_now[@]}"
 echo "RustDesk installed: yes"
 echo "RustDesk version: ${rustdesk_after}"
+echo "RustDesk permanent password supplied: $(test -n "$RUSTDESK_PERMANENT_PASSWORD" && echo yes || echo no)"
 echo "RustDesk service active: $(systemctl is-active rustdesk.service 2>/dev/null || echo missing)"
 echo "LightDM active: $(systemctl is-active lightdm.service 2>/dev/null || echo missing)"
 echo "Reboot required: $(test -f /var/run/reboot-required && echo yes || echo no)"
