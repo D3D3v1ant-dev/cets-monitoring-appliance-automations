@@ -113,16 +113,63 @@ wait_for_http() {
   return 1
 }
 
-require_root
+ensure_librenms_admin_user() {
+  local username="$1"
+  local password="$2"
+  local output=""
 
-TARGET_HOSTNAME="cets-mon-poc-01"
+  for ((i = 1; i <= 12; i++)); do
+    if output="$(
+      cd "$LIBRENMS_ROOT" &&
+        docker compose -p "$LIBRENMS_PROJECT" -f "$LIBRENMS_COMPOSE" exec -T --user librenms librenms \
+          lnms user:add --no-interaction --password="$password" --role=admin "$username" 2>&1
+    )"; then
+      echo "LibreNMS admin user ensured from Tactical global key store."
+      librenms_admin_bootstrap="created"
+      return 0
+    fi
+
+    if grep -Eiq 'already exists|duplicate|integrity constraint|unique' <<<"$output"; then
+      echo "LibreNMS admin user already exists; leaving existing account in place."
+      librenms_admin_bootstrap="already-exists"
+      return 0
+    fi
+
+    sleep 10
+  done
+
+  echo "WARNING: LibreNMS admin user bootstrap did not complete after retries; LibreNMS may still be initialising." >&2
+  librenms_admin_bootstrap="not-updated"
+  set_status "$EXIT_WARN" "WARNING"
+  return 1
+}
+
+require_commands() {
+  local missing=()
+  local cmd
+  for cmd in "$@"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+  if (( ${#missing[@]} > 0 )); then
+    echo "ERROR: Required command(s) missing: ${missing[*]}. Run Phases 02 and 03 first." >&2
+    exit "$EXIT_ERROR"
+  fi
+}
+
+require_root
+require_commands curl docker
+
+EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-}"
 hostname_value="$(hostname)"
-if [[ "$hostname_value" != "$TARGET_HOSTNAME" ]]; then
-  echo "ERROR: Expected hostname ${TARGET_HOSTNAME}, found ${hostname_value}." >&2
+if [[ -n "$EXPECTED_HOSTNAME" && "$hostname_value" != "$EXPECTED_HOSTNAME" ]]; then
+  echo "ERROR: Expected hostname ${EXPECTED_HOSTNAME}, found ${hostname_value}." >&2
   exit "$EXIT_ERROR"
 fi
 
 STACK_ROOT="/opt/cets/monitoring"
+STATE_ROOT="/opt/cets/state"
 LIBRENMS_ROOT="${STACK_ROOT}/librenms"
 CHECKMK_ROOT="${STACK_ROOT}/checkmk"
 LIBRENMS_COMPOSE="${LIBRENMS_ROOT}/compose.yaml"
@@ -150,7 +197,7 @@ librenms_env_created="no"
 checkmk_env_created="no"
 librenms_admin_bootstrap="not-requested"
 
-for dir in "$STACK_ROOT" "$LIBRENMS_ROOT" "$CHECKMK_ROOT"; do
+for dir in "$STACK_ROOT" "$LIBRENMS_ROOT" "$CHECKMK_ROOT" "$STATE_ROOT"; do
   install -d -o root -g root -m 0750 "$dir"
 done
 
@@ -426,14 +473,7 @@ if [[ -n "$librenms_admin_username" || -n "$librenms_admin_password" ]]; then
     librenms_admin_bootstrap="incomplete"
     set_status "$EXIT_WARN" "WARNING"
   else
-    if (cd "$LIBRENMS_ROOT" && docker compose -p "$LIBRENMS_PROJECT" -f "$LIBRENMS_COMPOSE" exec -T --user librenms librenms lnms user:add --password="$librenms_admin_password" --role=admin "$librenms_admin_username" >/dev/null 2>&1); then
-      echo "LibreNMS admin user ensured from Tactical global key store."
-      librenms_admin_bootstrap="created"
-    else
-      echo "WARNING: LibreNMS admin user bootstrap did not complete; user may already exist or LibreNMS may not be ready for user management." >&2
-      librenms_admin_bootstrap="not-updated"
-      set_status "$EXIT_WARN" "WARNING"
-    fi
+    ensure_librenms_admin_user "$librenms_admin_username" "$librenms_admin_password" || true
   fi
 fi
 
@@ -464,7 +504,7 @@ path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text("multisite_users.update(%s)\n" % pformat(users, sort_dicts=True), encoding="utf-8")
 PY
 ); then
-  if (cd "$CHECKMK_ROOT" && docker compose -p "$CHECKMK_PROJECT" -f "$CHECKMK_COMPOSE" exec -T --user cmk checkmk cmk -R >/dev/null 2>&1); then
+  if (cd "$CHECKMK_ROOT" && docker compose -p "$CHECKMK_PROJECT" -f "$CHECKMK_COMPOSE" exec -T checkmk su - cmk -c 'cmk -R' >/dev/null 2>&1); then
     echo "Checkmk cmkadmin contact email configured for ${ALERT_RECIPIENT}."
     checkmk_mail_config="configured"
   else
@@ -489,6 +529,26 @@ echo "--- Checkmk compose ps ---"
 if [[ -f /var/run/reboot-required ]]; then
   set_status "$EXIT_WARN" "WARNING"
 fi
+
+cat >"${STATE_ROOT}/monitoring-summary.env" <<EOF
+HOSTNAME=${hostname_value}
+LIBRENMS_INTERNAL_URL=http://${hostname_value}:8000/
+CHECKMK_INTERNAL_URL=http://${hostname_value}:8080/cmk/check_mk/
+LIBRENMS_ADMIN_USERNAME=${librenms_admin_username:-not-configured}
+LIBRENMS_ADMIN_PASSWORD_KEY=cets_lnms_admin_pass
+LIBRENMS_DB_USERNAME=${librenms_db_username}
+LIBRENMS_DB_PASSWORD_KEY=cets_lnms_db_pass
+CHECKMK_USERNAME=cmkadmin
+CHECKMK_REQUESTED_USERNAME=${checkmk_username}
+CHECKMK_PASSWORD_KEY=cets_cmk_pass
+ALERT_RECIPIENT=${ALERT_RECIPIENT}
+LOCAL_SMTP_RELAY=${LOCAL_SMTP_RELAY_HOST}:${LOCAL_SMTP_RELAY_PORT}
+LIBRENMS_HTTP_STATUS=${librenms_http_status}
+CHECKMK_HTTP_STATUS=${checkmk_http_status}
+LIBRENMS_MAIL_CONFIG=${librenms_mail_config}
+CHECKMK_MAIL_CONFIG=${checkmk_mail_config}
+EOF
+chmod 0640 "${STATE_ROOT}/monitoring-summary.env"
 
 echo
 echo "=== AUDIT SUMMARY ==="

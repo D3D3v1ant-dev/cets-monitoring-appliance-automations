@@ -110,7 +110,9 @@ else
   set_status "$EXIT_INFO" "INFO"
 fi
 
-if [[ "$hostname_value" != "cets-mon-poc-01" ]]; then
+EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-}"
+if [[ -n "$EXPECTED_HOSTNAME" && "$hostname_value" != "$EXPECTED_HOSTNAME" ]]; then
+  echo "ERROR: Expected hostname ${EXPECTED_HOSTNAME}, found ${hostname_value}." >&2
   set_status "$EXIT_ERROR" "ERROR"
 fi
 

@@ -60,10 +60,10 @@ source script, republish it through Tactical, rerun it, and verify the result.
 
 | Item | Current value |
 | --- | --- |
-| Hostname | `cets-mon-poc-01` |
-| Operating system | Debian GNU/Linux 13.6 Trixie, amd64 |
-| POC address observed during validation | `10.96.17.159/22` |
-| Connected subnet observed during validation | `10.96.16.0/22` |
+| Hostname | `cets-bbmon-01` |
+| Operating system | Debian GNU/Linux 13.7 Trixie, amd64 |
+| Appliance address observed during validation | `10.236.8.10/22` |
+| Connected subnet observed during validation | `10.236.8.0/22` |
 | Tactical category | `DDELANEY (Linux):Automations` |
 | Tactical serial task | `CETS Monitoring Appliance Serial Run` |
 | Tactical serial task ID | `112` |
@@ -79,8 +79,8 @@ identifier without validating it.
 
 ## 4. Safety Rules
 
-1. Target exactly one agent whose hostname is `cets-mon-poc-01` during the POC.
-2. Stop if zero or multiple agents match.
+1. Target exactly one approved appliance agent when launching from Tactical.
+2. Stop if zero or multiple agents match the intended site/device selection.
 3. Never use Tactical bulk execution for this workflow.
 4. Never modify `rmm.cets.com.au`, `api.cets.com.au`, or `mesh.cets.com.au`.
 5. Never print, log, commit, or document credential values.
@@ -421,16 +421,17 @@ For every change:
 4. Run syntax and static checks.
 5. Confirm no secret value appears in the diff.
 6. Query Tactical and confirm exactly one intended agent.
-7. Update the corresponding Tactical Script Manager entry through the API.
-8. Verify the Tactical script body matches the Git source checksum.
-9. Execute with full output during development.
-10. Inspect the return code and audit summary.
-11. Verify actual state independently over SSH.
-12. Correct the automation if desired and actual state differ.
-13. Run the same phase again through Tactical.
-14. Confirm IDs, files, services, containers, and data were reused.
-15. Update the report, profile, handoff, and Wiki.js page.
-16. Commit and push only after all acceptance checks pass.
+7. Optionally set `EXPECTED_HOSTNAME` on task actions when you want a per-run hostname guard. Leave it unset for reusable multi-host deployment.
+8. Update the corresponding Tactical Script Manager entry through the API.
+9. Verify the Tactical script body matches the Git source checksum.
+10. Execute with full output during development.
+11. Inspect the return code and audit summary.
+12. Verify actual state independently over SSH.
+13. Correct the automation if desired and actual state differ.
+14. Run the same phase again through Tactical.
+15. Confirm IDs, files, services, containers, and data were reused.
+16. Update the report, profile, handoff, and Wiki.js page.
+17. Commit and push only after all acceptance checks pass.
 
 ## 11. Running The Automation
 

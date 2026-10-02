@@ -57,11 +57,11 @@ package_installed() {
 
 require_root
 
-TARGET_HOSTNAME="cets-mon-poc-01"
+EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-}"
 DEFAULT_TIMEZONE="${DEFAULT_TIMEZONE:-Australia/Brisbane}"
 hostname_value="$(hostname)"
-if [[ "$hostname_value" != "$TARGET_HOSTNAME" ]]; then
-  echo "ERROR: Expected hostname ${TARGET_HOSTNAME}, found ${hostname_value}." >&2
+if [[ -n "$EXPECTED_HOSTNAME" && "$hostname_value" != "$EXPECTED_HOSTNAME" ]]; then
+  echo "ERROR: Expected hostname ${EXPECTED_HOSTNAME}, found ${hostname_value}." >&2
   exit "$EXIT_ERROR"
 fi
 

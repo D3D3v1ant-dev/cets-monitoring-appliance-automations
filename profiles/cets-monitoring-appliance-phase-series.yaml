@@ -1,8 +1,8 @@
 profile_name: "CETS Monitoring Appliance - Phase Series"
 tactical_task_name: "CETS Monitoring Appliance Serial Run"
 tactical_task_id: 112
-target_hostname: "cets-mon-poc-01"
-target_agent_id: "uKvvRrkLkMGYcdguEuDzzYgySzWUxMqBdtegkXIx"
+target_hostname: "cets-bbmon-01"
+target_agent_id: "lOpVfqkaioQywYWMeKmxHEolQblnobtdUcHPfrgU"
 category: "DDELANEY (Linux):Automations"
 execution_mode: "serial"
 continue_on_exit_codes:
@@ -13,7 +13,8 @@ stop_on_other_exit_codes: true
 notes:
   - "Continue on OK, Warning, and Informational tactical results."
   - "Stop on any non-published or error exit code."
-  - "Run only against the exact POC hostname and agent id."
+  - "Run only against the exact target hostname and confirmed live agent id."
+  - "EXPECTED_HOSTNAME is optional; leave unset for multi-host deployment, set it only for a single-host safety guard."
 steps:
   - order: 0
     phase: "00"

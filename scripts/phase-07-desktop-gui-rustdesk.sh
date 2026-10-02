@@ -73,6 +73,20 @@ package_installed() {
   dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'
 }
 
+require_commands() {
+  local missing=()
+  local cmd
+  for cmd in "$@"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+  if (( ${#missing[@]} > 0 )); then
+    echo "ERROR: Required command(s) missing: ${missing[*]}. Run Phase 02 Linux Baseline first." >&2
+    exit "$EXIT_ERROR"
+  fi
+}
+
 default_if_zero() {
   local value="$1"
   if [[ "${value,,}" == "zero" ]]; then
@@ -83,8 +97,9 @@ default_if_zero() {
 }
 
 require_root
+require_commands curl python3
 
-EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-cets-mon-poc-01}"
+EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-}"
 hostname_value="$(hostname -s)"
 if [[ -n "$EXPECTED_HOSTNAME" && "$hostname_value" != "$EXPECTED_HOSTNAME" ]]; then
   echo "ERROR: Expected hostname ${EXPECTED_HOSTNAME}, found ${hostname_value}." >&2
@@ -123,6 +138,7 @@ fi
 RUSTDESK_CONFIG_DIR="/root/.config/rustdesk"
 RUSTDESK_CONFIG_FILE="${RUSTDESK_CONFIG_DIR}/RustDesk2.toml"
 SHORTCUT_IP="${SHORTCUT_IP:-}"
+STATE_ROOT="/opt/cets/state"
 
 desktop_missing=()
 desktop_installed_now=()
@@ -370,6 +386,13 @@ echo "lightdm active: $(systemctl is-active lightdm.service 2>/dev/null || echo 
 echo "rustdesk enabled: $(systemctl is-enabled rustdesk.service 2>/dev/null || echo missing)"
 echo "rustdesk active: $(systemctl is-active rustdesk.service 2>/dev/null || echo missing)"
 
+rustdesk_id="$(
+  rustdesk --get-id 2>/dev/null | awk 'NF {print; exit}' || true
+)"
+if [[ -z "$rustdesk_id" ]]; then
+  rustdesk_id="not-reported"
+fi
+
 echo
 echo "=== POST-CHECKS ==="
 echo "Display manager: $(cat /etc/X11/default-display-manager 2>/dev/null || echo unknown)"
@@ -383,6 +406,35 @@ ss -ltnp | awk 'NR == 1 || /rustdesk|lightdm|xrdp|vnc|5900|2111[5-9]/'
 if [[ -f /var/run/reboot-required ]]; then
   set_status "$EXIT_WARN" "WARNING"
 fi
+
+install -d -o root -g root -m 0750 "$STATE_ROOT"
+cat >"${STATE_ROOT}/rustdesk-summary.env" <<EOF
+RUSTDESK_INSTALLED=yes
+RUSTDESK_VERSION=${rustdesk_after}
+RUSTDESK_ID=${rustdesk_id}
+RUSTDESK_SERVICE_ACTIVE=$(systemctl is-active rustdesk.service 2>/dev/null || echo missing)
+RUSTDESK_PASSWORD_SUPPLIED=$(test -n "$RUSTDESK_PERMANENT_PASSWORD" && echo yes || echo no)
+RUSTDESK_PASSWORD_KEY=cets_rd_perm_pass
+RUSTDESK_RENDEZVOUS_SERVER=${RUSTDESK_RENDEZVOUS_SERVER:-default}
+RUSTDESK_RELAY_SERVER=${RUSTDESK_RELAY_SERVER:-default}
+RUSTDESK_API_SERVER=${RUSTDESK_API_SERVER:-default}
+RUSTDESK_KEY_SUPPLIED=$(test -n "$RUSTDESK_KEY" && echo yes || echo no)
+RUSTDESK_PACKAGE_SOURCE=${RUSTDESK_DEB_URL}
+EOF
+chmod 0640 "${STATE_ROOT}/rustdesk-summary.env"
+
+load_summary_file() {
+  local path="$1"
+  if [[ -f "$path" ]]; then
+    # shellcheck disable=SC1090
+    . "$path"
+  fi
+}
+
+load_summary_file "${STATE_ROOT}/monitoring-summary.env"
+load_summary_file "${STATE_ROOT}/smtp-summary.env"
+load_summary_file "${STATE_ROOT}/cloudflare-summary.env"
+load_summary_file "${STATE_ROOT}/rustdesk-summary.env"
 
 echo
 echo "=== AUDIT SUMMARY ==="
@@ -413,5 +465,53 @@ case "$overall_label" in
     echo "Desktop GUI and RustDesk phase completed with error findings."
     ;;
 esac
+
+echo
+echo "=== OPERATOR HANDOVER SUMMARY ==="
+echo "Generated: $(date --iso-8601=seconds)"
+echo "Hostname: ${hostname_value}"
+echo "Local IP / shortcut host: ${SHORTCUT_IP}"
+echo
+echo "Internal service URLs:"
+echo "  LibreNMS: ${LIBRENMS_INTERNAL_URL:-http://${SHORTCUT_IP}:8000/}"
+echo "  Checkmk: ${CHECKMK_INTERNAL_URL:-http://${SHORTCUT_IP}:8080/cmk/check_mk/}"
+echo
+echo "Cloudflare service URLs:"
+echo "  LibreNMS: ${CLOUDFLARE_LIBRENMS_URL:-not-configured}"
+echo "  Checkmk: ${CLOUDFLARE_CHECKMK_URL:-not-configured}"
+echo "  Access allowed emails: ${CLOUDFLARE_ACCESS_EMAILS:-not-recorded}"
+echo "  Access session duration: ${CLOUDFLARE_ACCESS_SESSION_DURATION:-not-recorded}"
+echo "  Tunnel: ${CLOUDFLARE_TUNNEL_NAME:-not-configured} (${CLOUDFLARE_TUNNEL_STATUS:-unknown})"
+echo
+echo "Accounts and credential sources:"
+echo "  LibreNMS admin username: ${LIBRENMS_ADMIN_USERNAME:-not-configured}"
+echo "  LibreNMS admin password key: ${LIBRENMS_ADMIN_PASSWORD_KEY:-cets_lnms_admin_pass}"
+echo "  LibreNMS DB username: ${LIBRENMS_DB_USERNAME:-not-recorded}"
+echo "  LibreNMS DB password key: ${LIBRENMS_DB_PASSWORD_KEY:-cets_lnms_db_pass}"
+echo "  Checkmk username: ${CHECKMK_USERNAME:-cmkadmin}"
+echo "  Checkmk password key: ${CHECKMK_PASSWORD_KEY:-cets_cmk_pass}"
+if [[ "${CHECKMK_REQUESTED_USERNAME:-cmkadmin}" != "cmkadmin" ]]; then
+  echo "  Checkmk requested username note: ${CHECKMK_REQUESTED_USERNAME} was recorded, but the Docker login user is cmkadmin."
+fi
+echo
+echo "SMTP relay:"
+echo "  Local relay for containers/services: ${LOCAL_SMTP_RELAY:-host.docker.internal:25}"
+echo "  Upstream relayhost: ${POSTFIX_RELAYHOST:-not-recorded}"
+echo "  SMTP auth username: ${SMTP_AUTH_USERNAME:-not-recorded}"
+echo "  SMTP auth password key: ${SMTP_AUTH_PASSWORD_KEY:-cets_gmail_smtp_app_pw}"
+echo "  Alert recipient: ${ALERT_RECIPIENT:-it@cets.com.au}"
+echo "  Allowed client networks: ${ALLOWED_CLIENT_NETWORKS:-not-recorded}"
+echo
+echo "RustDesk:"
+echo "  Installed version: ${RUSTDESK_VERSION:-${rustdesk_after}}"
+echo "  RustDesk ID: ${RUSTDESK_ID:-${rustdesk_id}}"
+echo "  Service active: ${RUSTDESK_SERVICE_ACTIVE:-$(systemctl is-active rustdesk.service 2>/dev/null || echo missing)}"
+echo "  Permanent password key: ${RUSTDESK_PASSWORD_KEY:-cets_rd_perm_pass}"
+echo "  Permanent password supplied this run: ${RUSTDESK_PASSWORD_SUPPLIED:-$(test -n "$RUSTDESK_PERMANENT_PASSWORD" && echo yes || echo no)}"
+echo "  Rendezvous server: ${RUSTDESK_RENDEZVOUS_SERVER:-default}"
+echo "  Relay server: ${RUSTDESK_RELAY_SERVER:-default}"
+echo "  API server: ${RUSTDESK_API_SERVER:-default}"
+echo
+echo "No password values are printed; use the Tactical global key store entries above."
 
 exit "$overall_code"

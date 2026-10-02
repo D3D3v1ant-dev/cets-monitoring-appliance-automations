@@ -61,10 +61,10 @@ require_root() {
 
 require_root
 
-TARGET_HOSTNAME="cets-mon-poc-01"
+EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-}"
 hostname_value="$(hostname)"
-if [[ "$hostname_value" != "$TARGET_HOSTNAME" ]]; then
-  echo "ERROR: Expected hostname ${TARGET_HOSTNAME}, found ${hostname_value}." >&2
+if [[ -n "$EXPECTED_HOSTNAME" && "$hostname_value" != "$EXPECTED_HOSTNAME" ]]; then
+  echo "ERROR: Expected hostname ${EXPECTED_HOSTNAME}, found ${hostname_value}." >&2
   exit "$EXIT_ERROR"
 fi
 
@@ -83,6 +83,7 @@ POSTFIX_MAIN_CF="/etc/postfix/main.cf"
 POSTFIX_SASL_PASSWD="/etc/postfix/sasl_passwd"
 POSTFIX_CONFIG_BACKUP_DIR="/var/backups/cets-monitoring-appliance"
 POSTFIX_TEST_RECIPIENT="${POSTFIX_TEST_RECIPIENT:-}"
+STATE_ROOT="/opt/cets/state"
 
 if [[ -z "$SMTP_AUTH_USERNAME" ]]; then
   echo "ERROR: SMTP username is missing from Tactical global key store." >&2
@@ -116,6 +117,7 @@ apt-get update
 apt-get install -y --no-install-recommends postfix libsasl2-modules ca-certificates mailutils
 
 install -d -o root -g root -m 0750 "$POSTFIX_CONFIG_BACKUP_DIR"
+install -d -o root -g root -m 0750 "$STATE_ROOT"
 if [[ -f "$POSTFIX_MAIN_CF" ]]; then
   cp -a "$POSTFIX_MAIN_CF" "${POSTFIX_CONFIG_BACKUP_DIR}/main.cf.$(date +%Y%m%d%H%M%S)"
 fi
@@ -198,6 +200,21 @@ echo "SMTP port: ${SMTP_PORT}"
 echo "Postfix status: ${postfix_status}"
 echo "Configured relayhost: [${SMTP_SERVER}]:${SMTP_PORT}"
 echo "Config backup directory: ${POSTFIX_CONFIG_BACKUP_DIR}"
+
+cat >"${STATE_ROOT}/smtp-summary.env" <<EOF
+SMTP_SERVER=${SMTP_SERVER}
+SMTP_PORT=${SMTP_PORT}
+SMTP_LISTEN_PORT=${SMTP_LISTEN_PORT}
+SMTP_RELAY_DOMAIN=${SMTP_RELAY_DOMAIN}
+SMTP_AUTH_USERNAME=${SMTP_AUTH_USERNAME}
+SMTP_AUTH_PASSWORD_KEY=cets_gmail_smtp_app_pw
+SMTP_USE_TLS=${SMTP_USE_TLS}
+POSTFIX_STATUS=${postfix_status}
+POSTFIX_RELAYHOST=[${SMTP_SERVER}]:${SMTP_PORT}
+POSTFIX_TEST_RECIPIENT=${POSTFIX_TEST_RECIPIENT:-not-configured}
+ALLOWED_CLIENT_NETWORKS=${ALLOWED_CLIENT_NETWORKS}
+EOF
+chmod 0640 "${STATE_ROOT}/smtp-summary.env"
 
 case "$overall_label" in
   OK)

@@ -50,7 +50,22 @@ require_root() {
   fi
 }
 
+require_commands() {
+  local missing=()
+  local cmd
+  for cmd in "$@"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+  if (( ${#missing[@]} > 0 )); then
+    echo "ERROR: Required command(s) missing: ${missing[*]}. Run Phase 02 Linux Baseline first." >&2
+    exit "$EXIT_ERROR"
+  fi
+}
+
 require_root
+require_commands curl python3
 
 EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-}"
 hostname_value="$(hostname -s)"
@@ -83,6 +98,7 @@ CLOUDFLARE_LOG_FILE="${CLOUDFLARE_LOG_FILE:-/var/log/cets-cloudflare-tunnel.log}
 CLOUDFLARE_SERVICE_FILE="/etc/systemd/system/cloudflared.service"
 CLOUDFLARE_TOKEN_ENV_FILE="${CLOUDFLARE_TOKEN_ENV_FILE:-/etc/cets/cloudflared.env}"
 CLOUDFLARE_UPDATE_MODE="${CLOUDFLARE_UPDATE_MODE:-install}"
+STATE_ROOT="/opt/cets/state"
 
 if [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
   echo "ERROR: Cloudflare API token or account ID missing from Tactical global key store." >&2
@@ -106,6 +122,7 @@ fi
 
 install -d -o root -g root -m 0750 "$CLOUDFLARE_CONFIG_DIR"
 install -d -o root -g root -m 0750 "$(dirname "$CLOUDFLARE_LOG_FILE")"
+install -d -o root -g root -m 0750 "$STATE_ROOT"
 
 if command -v cloudflared >/dev/null 2>&1; then
   echo "INFO: cloudflared is already installed." >&2
@@ -442,6 +459,20 @@ echo "Access app and policy ensured for LibreNMS: ${libre_hostname} (${libre_app
 echo "Access app and policy ensured for Checkmk: ${cmk_hostname} (${cmk_app_id})"
 echo "DNS record ensured for LibreNMS: ${libre_hostname} (${libre_dns_id})"
 echo "DNS record ensured for Checkmk: ${cmk_hostname} (${cmk_dns_id})"
+
+cat >"${STATE_ROOT}/cloudflare-summary.env" <<EOF
+CLOUDFLARE_TUNNEL_NAME=${CLOUDFLARE_TUNNEL_NAME}
+CLOUDFLARE_TUNNEL_ID=${CLOUDFLARE_TUNNEL_ID}
+CLOUDFLARE_TUNNEL_STATUS=${tunnel_status}
+CLOUDFLARE_LIBRENMS_URL=https://${libre_hostname}/
+CLOUDFLARE_CHECKMK_URL=https://${cmk_hostname}/cmk/check_mk/
+CLOUDFLARE_ACCESS_EMAILS=${CLOUDFLARE_ACCESS_EMAILS}
+CLOUDFLARE_ACCESS_SESSION_DURATION=${CLOUDFLARE_ACCESS_SESSION_DURATION}
+CLOUDFLARE_ZONE_NAME=${CLOUDFLARE_ZONE_NAME}
+CLOUDFLARE_CONFIG_FILE=${CLOUDFLARE_CONFIG_FILE}
+CLOUDFLARE_LOG_FILE=${CLOUDFLARE_LOG_FILE}
+EOF
+chmod 0640 "${STATE_ROOT}/cloudflare-summary.env"
 
 echo
 echo "=== CETS MONITORING APPLIANCE CLOUDFLARE TUNNEL ==="

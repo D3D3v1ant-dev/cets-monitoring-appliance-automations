@@ -52,7 +52,9 @@ tactical_enabled="$(systemctl is-enabled tacticalagent.service 2>/dev/null || tr
 tactical_active="$(systemctl is-active tacticalagent.service 2>/dev/null || true)"
 os_release_contents="$(cat /etc/os-release)"
 
-if [[ "$hostname_value" != "cets-mon-poc-01" ]]; then
+EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-}"
+if [[ -n "$EXPECTED_HOSTNAME" && "$hostname_value" != "$EXPECTED_HOSTNAME" ]]; then
+  echo "ERROR: Expected hostname ${EXPECTED_HOSTNAME}, found ${hostname_value}." >&2
   set_status "$EXIT_ERROR" "ERROR"
 fi
 

@@ -55,12 +55,27 @@ package_installed() {
   dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'
 }
 
-require_root
+require_commands() {
+  local missing=()
+  local cmd
+  for cmd in "$@"; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing+=("$cmd")
+    fi
+  done
+  if (( ${#missing[@]} > 0 )); then
+    echo "ERROR: Required command(s) missing: ${missing[*]}. Run Phase 02 Linux Baseline first." >&2
+    exit "$EXIT_ERROR"
+  fi
+}
 
-TARGET_HOSTNAME="cets-mon-poc-01"
+require_root
+require_commands curl gpg
+
+EXPECTED_HOSTNAME="${EXPECTED_HOSTNAME:-}"
 hostname_value="$(hostname)"
-if [[ "$hostname_value" != "$TARGET_HOSTNAME" ]]; then
-  echo "ERROR: Expected hostname ${TARGET_HOSTNAME}, found ${hostname_value}." >&2
+if [[ -n "$EXPECTED_HOSTNAME" && "$hostname_value" != "$EXPECTED_HOSTNAME" ]]; then
+  echo "ERROR: Expected hostname ${EXPECTED_HOSTNAME}, found ${hostname_value}." >&2
   exit "$EXIT_ERROR"
 fi
 
