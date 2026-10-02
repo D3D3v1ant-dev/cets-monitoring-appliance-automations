@@ -8,9 +8,7 @@ Cloudflare Tunnel, Cloudflare Access, XFCE, Firefox, and RustDesk
 
 **Current validation host:** `cets-bbmon-01` at `10.236.8.10`
 
-**Primary repository:** <https://github.com/D3D3v1ant-dev/cets-monitoring-appliance-automations>
-
-> Do not put credentials in Wiki.js, Git, tickets, screenshots, or chat
+> Do not put credentials in Wiki.js, tickets, screenshots, or chat
 > transcripts. Secret values belong in Tactical global keys, application
 > credential stores, or protected root-only files on the appliance.
 
@@ -106,7 +104,7 @@ ssh localhost
 ```
 
 The appliance must be able to reach Debian repositories, Docker repositories,
-GitHub, Gmail SMTP, Cloudflare, Tactical, and MeshCentral.
+Gmail SMTP, Cloudflare, Tactical, and MeshCentral.
 
 ## 5. Installing The Tactical Agent
 
@@ -214,7 +212,7 @@ It should include:
 - Reminder that password values are not printed.
 
 If the summary is missing, rerun the current automation after confirming the
-Git source and Tactical script entries are current.
+Tactical script entries are current.
 
 ## 9. Local Web Access
 
@@ -754,7 +752,7 @@ Protect:
 - `/opt/cets/cloudflare`.
 - Postfix configuration and protected SASL maps.
 - Tactical script definitions and key names.
-- GitHub repository history.
+- Current Tactical automation definitions and exported documentation.
 
 Recovery outline:
 
@@ -791,8 +789,7 @@ Recovery outline:
   - `bb-screening` / `10.236.8.152`
   - `bb-playout` / `10.236.8.153`
   - `bb-spare` / `10.236.8.230`
-- Current custom Avid check is deployed through Tactical and source-controlled
-  in Git.
+- Current custom Avid check is deployed through Tactical.
 - Repeated `CE-AVID :1d` NetBT name conflicts are currently the most prominent
   Avid-related warning.
 - Checkmk TLS registration is worth completing later so Windows agent transport
@@ -800,7 +797,6 @@ Recovery outline:
 
 ## 24. References
 
-- [CETS monitoring automation repository](https://github.com/D3D3v1ant-dev/cets-monitoring-appliance-automations)
 - [Cloudflare Tunnel setup](https://developers.cloudflare.com/tunnel/setup/)
 - [Cloudflare Tunnel routing](https://developers.cloudflare.com/tunnel/routing/)
 - [Cloudflare Access self-hosted apps](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
