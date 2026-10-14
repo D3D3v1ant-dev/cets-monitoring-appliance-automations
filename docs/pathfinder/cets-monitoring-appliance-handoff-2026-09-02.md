@@ -150,6 +150,9 @@ than the desired final stop-on-error policy.
 - Generated bootstrap credentials only on the appliance.
 - Published LibreNMS on all interfaces at TCP `8000`.
 - Published Checkmk on all interfaces at TCP `8080`.
+- Configured LibreNMS to trust reverse-proxy headers without hard-coding a
+  public base URL, preserving both local `http://<appliance-ip>:8000/` access
+  and HTTPS Cloudflare Access.
 - Confirmed Checkmk healthy and both web applications responding.
 - Passed a second-run idempotency check.
 - Retained an informational capacity finding because the POC has only about
@@ -202,6 +205,23 @@ The working public applications are:
 LibreNMS: https://libre-cets-mon-poc-01-26.cets.com.au
 Checkmk:  https://cmk-cets-mon-poc-01-26.cets.com.au
 ```
+
+LibreNMS must generate request-aware URLs for this to work correctly. If
+`APP_URL` or `LIBRENMS_BASE_URL` is forced to a local HTTP URL, the Cloudflare
+page can load while device tables remain empty because the table AJAX endpoint
+is emitted as `http://libre-.../ajax/table/device`. Current automation leaves
+those base URL values unset and sets:
+
+```text
+APP_TRUSTED_PROXIES=*
+TRUSTED_PROXIES=*
+TRUSTED_HEADERS=HEADER_X_FORWARDED_ALL
+TRUSTED_PROXY_HEADERS=HEADER_X_FORWARDED_ALL
+```
+
+The Tactical repair script `CETS LibreNMS - Cloudflare Proxy Dual Access Fix`
+applies the same correction to existing appliances and clears LibreNMS/Laravel
+caches.
 
 The original two-level names were not compatible with Universal SSL on this
 full Cloudflare DNS zone. The automation now generates one-level names using:

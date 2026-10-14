@@ -266,6 +266,12 @@ Access flow:
 Cloudflare Access authenticates the outer web path. LibreNMS and Checkmk still
 have their own application logins. Both layers are expected.
 
+LibreNMS must remain usable from both local and Cloudflare URLs. The build
+automation therefore does not hard-code `APP_URL` or `LIBRENMS_BASE_URL` to the
+Cloudflare hostname. It trusts proxy headers instead, so local access keeps
+using `http://<appliance-ip>:8000/` while Cloudflare access generates HTTPS
+application and AJAX URLs such as `/ajax/table/device`.
+
 ### When Cloudflare Is Most Useful
 
 Use Cloudflare access when:
@@ -708,6 +714,32 @@ Check:
 - Local LibreNMS and Checkmk URLs respond on `127.0.0.1`.
 - The tunnel ID matches the intended tunnel.
 - The remote ingress rules point to the correct local origins.
+
+### LibreNMS Opens Through Cloudflare But Device Lists Are Empty
+
+If the dashboard loads but device tables show no devices, inspect the page
+source for the device table endpoint. The table should not point to an HTTP
+Cloudflare URL such as:
+
+```text
+data-url="http://libre-.../ajax/table/device"
+```
+
+That mixed-content URL can prevent the browser from loading the device table
+through HTTPS Cloudflare Access. The appliance build should leave `APP_URL` and
+`LIBRENMS_BASE_URL` unset and set proxy trust variables in
+`/opt/cets/monitoring/librenms/librenms.env`:
+
+```text
+APP_TRUSTED_PROXIES=*
+TRUSTED_PROXIES=*
+TRUSTED_HEADERS=HEADER_X_FORWARDED_ALL
+TRUSTED_PROXY_HEADERS=HEADER_X_FORWARDED_ALL
+```
+
+After changing these values, restart LibreNMS and clear Laravel caches. The
+one-shot Tactical repair script is
+`CETS LibreNMS - Cloudflare Proxy Dual Access Fix`.
 
 ### NEXIS Cannot Send Email
 
